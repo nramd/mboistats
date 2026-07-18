@@ -4,11 +4,14 @@ import 'package:mboistats/route-manager.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:webview_flutter_plus/webview_flutter_plus.dart';
+import 'package:mboistats/services/logger_service.dart';
+import 'package:mboistats/services/activity_observer.dart';
 
 LocalhostServer localhostServer = LocalhostServer();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LoggerService.init();
 
   await localhostServer.start(port: 0);
   runApp(const MyApp());
@@ -25,6 +28,9 @@ class MyApp extends StatelessWidget {
         child: MaterialApp(
           initialRoute: '/splash',
           routes: RouteManager.routes,
+          navigatorObservers: [
+            ActivityLoggingObserver(),
+          ],
         ),
       ),
     );

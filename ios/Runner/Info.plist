@@ -41,6 +41,27 @@
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
+		<key>UIAppFonts</key>
+		<array>
+			<string>SF-Pro-Display-Regular.otf</string>
+			<string>SF-Pro-Display-Semibold.otf</string>
+			<string>SF-Pro-Display-Bold.otf</string>
+		</array>
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
+		<key>UIFileSharingEnabled</key>
+		<true/>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+			<key>NSAllowsArbitraryLoadsInWebContent</key>
+			<true/>
+		</dict>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Aplikasi memerlukan akses galeri untuk menyimpan gambar infografis.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>Aplikasi memerlukan akses galeri untuk menambahkan gambar infografis yang diunduh.</string>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>UIApplicationSupportsIndirectInputEvents</key>

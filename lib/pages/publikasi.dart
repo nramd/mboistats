@@ -250,11 +250,17 @@ class _PublikasiPageState extends State<PublikasiPage> {
             downloadDestination: DownloadDestinations.publicDownloads,
             onProgress: (fileName, double progress) {},
             onDownloadCompleted: (String path) {
-              File downloadedFile = File('/storage/emulated/0/Download/\$fileName\$fileExt');
-              downloadedFile.rename(downloadedFile.path.replaceAll(".php", ".pdf"));
+              // Menggunakan path unduhan dinamis yang dikembalikan oleh downloader agar kompatibel dengan Android & iOS
+              File downloadedFile = File(path);
+              String newPath = path.replaceAll(".php", ".pdf");
+              try {
+                downloadedFile.renameSync(newPath);
+              } catch (e) {
+                print("Gagal me-rename file: $e");
+              }
 
               Fluttertoast.showToast(
-                msg: 'Publikasi "\$fileName.pdf" telah disimpan dalam Folder Download.',
+                msg: 'Publikasi "$fileName.pdf" telah disimpan.',
                 toastLength: Toast.LENGTH_LONG,
                 gravity: ToastGravity.CENTER,
                 backgroundColor: Colors.blue,
@@ -295,12 +301,17 @@ class _PublikasiPageState extends State<PublikasiPage> {
   }
 
   Future<bool> _checkPermission() async {
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
       var permissionStatus = await Permission.storage.status;
 
       if (permissionStatus.isDenied) {
         await Permission.storage.request();
-        await saf.getDirectoryPermission(isDynamic: true);
+        saf = Saf('/storage/emulated/0/Download');
+        try {
+          await saf.getDirectoryPermission(isDynamic: true);
+        } catch (e) {
+          print('SAF error: $e');
+        }
         return permissionStatus.isGranted;
       } else {
         return permissionStatus.isGranted;

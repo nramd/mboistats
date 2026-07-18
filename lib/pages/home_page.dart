@@ -5,6 +5,7 @@ import 'package:mboistats/components/carousel_infografis.dart';
 import 'package:mboistats/components/carousel_publikasi.dart';
 import 'package:mboistats/components/footer.dart';
 import 'package:mboistats/components/menus.dart';
+import 'package:mboistats/components/recommendations.dart';
 import 'package:mboistats/theme.dart';
 
 class HomePage extends StatefulWidget {
@@ -105,6 +106,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const Menus(),
               ButtonSection(),
+              const RecommendationSection(),
               const CarouselPublikasi(),
               const CarouselInfografis(),
             ],

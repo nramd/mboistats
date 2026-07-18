@@ -264,7 +264,7 @@ class _BeritaPageState extends State<BeritaPages> {
           onDownloadCompleted: (String path) {
 
             Fluttertoast.showToast(
-              msg: 'Berita Resmi Statistik (BRS) "\$fileName.pdf" telah disimpan dalam Folder Download.',
+              msg: 'Berita Resmi Statistik (BRS) "$fileName.pdf" telah disimpan.',
               toastLength: Toast.LENGTH_LONG,
               gravity: ToastGravity.CENTER,
               backgroundColor: Colors.blue,
@@ -306,11 +306,16 @@ class _BeritaPageState extends State<BeritaPages> {
   }
 
   Future<bool> _checkPermission() async {
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
       var permissionStatus = await Permission.storage.status;
       if (permissionStatus.isDenied) {
         await Permission.storage.request();
-        await saf.getDirectoryPermission(isDynamic: true);
+        saf = Saf('/storage/emulated/0/Download');
+        try {
+          await saf.getDirectoryPermission(isDynamic: true);
+        } catch (e) {
+          print('SAF error: $e');
+        }
         return permissionStatus.isGranted;
       } else {
         return permissionStatus.isGranted;
