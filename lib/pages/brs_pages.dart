@@ -12,6 +12,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:html_unescape/html_unescape.dart';
 import 'package:html/parser.dart' show parse;
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:mboistats/services/logger_service.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 class BeritaPages extends StatefulWidget {
   const BeritaPages({Key? key}) : super(key: key);
@@ -233,6 +236,12 @@ class _BeritaPageState extends State<BeritaPages> {
                 TextButton(
                   onPressed: () {
                     Navigator.pop(context);
+                    String fileName = dataBRS[index]["title"];
+                    LoggerService.logActivity(
+                      actionType: 'view_pdf',
+                      sectorCategory: 'berita',
+                      itemName: fileName,
+                    );
                     openPdfDirectly(context, pdfUrl);
                   },
                   child: const Text("Buka PDF"),
@@ -246,6 +255,48 @@ class _BeritaPageState extends State<BeritaPages> {
   }
 
   Future<void> downloadAndShowConfirmation(BuildContext context, String pdfUrl, String fileName) async {
+    if (Platform.isIOS) {
+      try {
+        Fluttertoast.showToast(
+          msg: "Menyiapkan berkas BRS...",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          backgroundColor: Colors.blue,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+
+        final response = await http.get(Uri.parse(pdfUrl));
+        if (response.statusCode == 200) {
+          final dir = await getTemporaryDirectory();
+          final cleanName = fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
+          final filePath = '${dir.path}/$cleanName.pdf';
+          final file = File(filePath);
+          await file.writeAsBytes(response.bodyBytes);
+
+          LoggerService.logActivity(
+            actionType: 'download_file',
+            sectorCategory: 'berita',
+            itemName: fileName,
+          );
+
+          await OpenFile.open(filePath);
+        } else {
+          throw Exception("Gagal mengunduh berkas dari server.");
+        }
+      } catch (error) {
+        Fluttertoast.showToast(
+          msg: "Gagal mengunduh: $error",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          backgroundColor: Colors.blue,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+      }
+      return;
+    }
+
     if (await _checkPermission()) {
       try {
         Fluttertoast.showToast(
@@ -288,6 +339,13 @@ class _BeritaPageState extends State<BeritaPages> {
                 print("Gagal me-rename file: $e");
               }
             }
+
+            // Catat log aktivitas ke Supabase
+            LoggerService.logActivity(
+              actionType: 'download_file',
+              sectorCategory: 'berita',
+              itemName: fileName,
+            );
 
             Fluttertoast.showToast(
               msg: 'Berita Resmi Statistik (BRS) "$fileName" telah disimpan.',

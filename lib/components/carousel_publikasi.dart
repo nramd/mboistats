@@ -12,6 +12,9 @@ import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:mboistats/services/logger_service.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../theme.dart';
 
@@ -214,6 +217,48 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
   }
 
   Future<void> downloadAndShowConfirmation(BuildContext context, String pdfUrl, String fileName) async {
+    if (Platform.isIOS) {
+      try {
+        Fluttertoast.showToast(
+          msg: "Menyiapkan berkas publikasi...",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          backgroundColor: Colors.blue,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+
+        final response = await http.get(Uri.parse(pdfUrl));
+        if (response.statusCode == 200) {
+          final dir = await getTemporaryDirectory();
+          final cleanName = fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
+          final filePath = '${dir.path}/$cleanName.pdf';
+          final file = File(filePath);
+          await file.writeAsBytes(response.bodyBytes);
+
+          LoggerService.logActivity(
+            actionType: 'download_file',
+            sectorCategory: 'publikasi',
+            itemName: fileName,
+          );
+
+          await OpenFile.open(filePath);
+        } else {
+          throw Exception("Gagal mengunduh berkas dari server.");
+        }
+      } catch (error) {
+        Fluttertoast.showToast(
+          msg: "Gagal mengunduh: $error",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          backgroundColor: Colors.blue,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+      }
+      return;
+    }
+
     // Check if the necessary permissions are granted
     if (await _checkPermission()) {
       try {
@@ -260,6 +305,13 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
                   print("Gagal me-rename file: $e");
                 }
               }
+
+              // Catat log aktivitas ke Supabase
+              LoggerService.logActivity(
+                actionType: 'download_file',
+                sectorCategory: 'publikasi',
+                itemName: fileName,
+              );
 
               Fluttertoast.showToast(
                 msg: 'Publikasi "$fileName" telah disimpan.',
