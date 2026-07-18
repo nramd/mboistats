@@ -26,8 +26,25 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       home: ConnectivityWrapper(
         child: MaterialApp(
+          debugShowCheckedModeBanner: false,
           initialRoute: '/splash',
-          routes: RouteManager.routes,
+          onGenerateRoute: (settings) {
+            final builder = RouteManager.routes[settings.name];
+            if (builder != null) {
+              return PageRouteBuilder(
+                settings: settings,
+                pageBuilder: (context, animation, secondaryAnimation) => builder(context),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 200),
+              );
+            }
+            return null;
+          },
           navigatorObservers: [
             ActivityLoggingObserver(),
           ],

@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:html_unescape/html_unescape.dart';
 import 'package:html/parser.dart' show parse;
+import 'package:device_info_plus/device_info_plus.dart';
 
 class BeritaPages extends StatefulWidget {
   const BeritaPages({Key? key}) : super(key: key);
@@ -256,15 +257,40 @@ class _BeritaPageState extends State<BeritaPages> {
           fontSize: 16.0,
         );
 
+        String cleanFileName = fileName;
+        if (!cleanFileName.toLowerCase().endsWith('.pdf')) {
+          cleanFileName = '$cleanFileName.pdf';
+        }
+
         FileDownloader.downloadFile(
           url: pdfUrl,
-          name: fileName,
+          name: cleanFileName,
           downloadDestination: DownloadDestinations.publicDownloads,
           onProgress: (fileName, double progress) {},
           onDownloadCompleted: (String path) {
+            // Fallback rename jika file terunduh dengan ekstensi .php karena redirect server BPS
+            final decodedPath = Uri.decodeFull(path);
+            if (decodedPath.endsWith('.php')) {
+              try {
+                final file = File(decodedPath);
+                final newPath = decodedPath.replaceAll('.php', '.pdf');
+                if (file.existsSync()) {
+                  file.renameSync(newPath);
+                } else {
+                  // Coba gunakan path mentah jika file disimpan dengan %20 literal
+                  final rawFile = File(path);
+                  final rawNewPath = path.replaceAll('.php', '.pdf');
+                  if (rawFile.existsSync()) {
+                    rawFile.renameSync(rawNewPath);
+                  }
+                }
+              } catch (e) {
+                print("Gagal me-rename file: $e");
+              }
+            }
 
             Fluttertoast.showToast(
-              msg: 'Berita Resmi Statistik (BRS) "$fileName.pdf" telah disimpan.',
+              msg: 'Berita Resmi Statistik (BRS) "$fileName" telah disimpan.',
               toastLength: Toast.LENGTH_LONG,
               gravity: ToastGravity.CENTER,
               backgroundColor: Colors.blue,
@@ -307,19 +333,16 @@ class _BeritaPageState extends State<BeritaPages> {
 
   Future<bool> _checkPermission() async {
     if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        return true;
+      }
       var permissionStatus = await Permission.storage.status;
       if (permissionStatus.isDenied) {
-        await Permission.storage.request();
-        saf = Saf('/storage/emulated/0/Download');
-        try {
-          await saf.getDirectoryPermission(isDynamic: true);
-        } catch (e) {
-          print('SAF error: $e');
-        }
-        return permissionStatus.isGranted;
-      } else {
-        return permissionStatus.isGranted;
+        permissionStatus = await Permission.storage.request();
       }
+      return permissionStatus.isGranted;
     }
     return true;
   }

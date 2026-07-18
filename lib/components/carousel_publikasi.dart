@@ -11,6 +11,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../theme.dart';
 
@@ -120,20 +121,16 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
 
   Future<bool> _checkPermission() async {
     if (Platform.isAndroid) {
-      var permissionStatus = await Permission.storage.status;
-
-      if (permissionStatus.isDenied) {
-        await Permission.storage.request();
-        saf = Saf('/storage/emulated/0/Download');
-        try {
-          await saf.getDirectoryPermission(isDynamic: true);
-        } catch (e) {
-          print('SAF error: $e');
-        }
-        return permissionStatus.isGranted;
-      } else {
-        return permissionStatus.isGranted;
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        return true;
       }
+      var permissionStatus = await Permission.storage.status;
+      if (permissionStatus.isDenied) {
+        permissionStatus = await Permission.storage.request();
+      }
+      return permissionStatus.isGranted;
     }
     return true;
   }
@@ -230,26 +227,42 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
           fontSize: 16.0,
         );
 
+        String cleanFileName = fileName;
+        if (!cleanFileName.toLowerCase().endsWith('.pdf')) {
+          cleanFileName = '$cleanFileName.pdf';
+        }
+
         //Download a single file
         FileDownloader.downloadFile(
             url: pdfUrl,
-            name: fileName,
+            name: cleanFileName,
             downloadDestination: DownloadDestinations.publicDownloads,
             onProgress: (fileName, double progress) {
 
             },
             onDownloadCompleted: (String path) {
-              // Menggunakan path unduhan dinamis yang dikembalikan oleh downloader agar kompatibel dengan Android & iOS
-              File downloadedFile = File(path);
-              String newPath = path.replaceAll(".php", ".pdf");
-              try {
-                downloadedFile.renameSync(newPath);
-              } catch (e) {
-                print("Gagal me-rename file: $e");
+              final decodedPath = Uri.decodeFull(path);
+              if (decodedPath.endsWith('.php')) {
+                try {
+                  final file = File(decodedPath);
+                  final newPath = decodedPath.replaceAll('.php', '.pdf');
+                  if (file.existsSync()) {
+                    file.renameSync(newPath);
+                  } else {
+                    // Coba gunakan path mentah jika file disimpan dengan %20 literal
+                    final rawFile = File(path);
+                    final rawNewPath = path.replaceAll('.php', '.pdf');
+                    if (rawFile.existsSync()) {
+                      rawFile.renameSync(rawNewPath);
+                    }
+                  }
+                } catch (e) {
+                  print("Gagal me-rename file: $e");
+                }
               }
 
               Fluttertoast.showToast(
-                msg: 'Publikasi "$fileName.pdf" telah disimpan.',
+                msg: 'Publikasi "$fileName" telah disimpan.',
                 toastLength: Toast.LENGTH_LONG,
                 gravity: ToastGravity.CENTER,
                 timeInSecForIosWeb: 1,

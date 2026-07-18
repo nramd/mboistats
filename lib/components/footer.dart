@@ -28,22 +28,29 @@ class _FooterState extends State<Footer> {
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    if (index == _selectedIndex) {
+      return; // Jangan lakukan apa-apa jika menekan tab yang saat ini aktif
+    }
 
-    switch (_selectedIndex) {
+    switch (index) {
       case 0:
-        Navigator.of(context)
-            .pushNamed('/main'); // Ganti dengan rute yang sesuai
+        // Kembali ke Beranda dan bersihkan semua tumpukan halaman sebelumnya
+        Navigator.of(context).pushNamedAndRemoveUntil('/main', (route) => false);
         break;
       case 1:
-        Navigator.of(context)
-            .pushNamed('/berita'); // Ganti dengan rute yang sesuai
+        // Ganti rute aktif jika kita berpindah di antara halaman tab non-beranda
+        if (_selectedIndex != 0) {
+          Navigator.of(context).pushReplacementNamed('/berita');
+        } else {
+          Navigator.of(context).pushNamed('/berita');
+        }
         break;
       case 2:
-        Navigator.of(context)
-            .pushNamed('/contact'); // Ganti dengan rute yang sesuai
+        if (_selectedIndex != 0) {
+          Navigator.of(context).pushReplacementNamed('/contact');
+        } else {
+          Navigator.of(context).pushNamed('/contact');
+        }
         break;
     }
   }
@@ -52,13 +59,12 @@ class _FooterState extends State<Footer> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        // Intersep saat tombol kembali ditekan
         if (_selectedIndex != 0) {
-          // Jika tidak berada di halaman beranda, navigasi kembali ke halaman beranda
-          Navigator.of(context).pushNamed('/main');
-          return false; // Jangan pop rute saat ini
+          // Jika ditekan tombol kembali di luar Beranda, kembali ke Beranda dan bersihkan stack
+          Navigator.of(context).pushNamedAndRemoveUntil('/main', (route) => false);
+          return false;
         }
-        return true; // Izinkan popping rute saat ini (keluar dari aplikasi)
+        return true; // Keluar dari aplikasi jika sudah berada di Beranda
       },
       child: BottomNavigationBar(
         currentIndex: _selectedIndex,

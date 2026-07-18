@@ -31,7 +31,7 @@ dependencies:
   # open_settings: ^2.0.2
   # package_info: ^2.0.2
   path_provider: ^2.0.11
-  permission_handler: 10.4.5
+  permission_handler: ^11.3.0
   # saf: ^1.0.3+4
   saf:
     path: local_packages/saf

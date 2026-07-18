@@ -8,6 +8,7 @@ import 'package:saf/saf.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../theme.dart';
 
@@ -119,20 +120,16 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
 
   Future<bool> _checkPermission() async {
     if (Platform.isAndroid) {
-      var permissionStatus = await Permission.storage.status;
-
-      if (permissionStatus.isDenied) {
-        await Permission.storage.request();
-        saf = Saf('/storage/emulated/0/Download');
-        try {
-          await saf.getDirectoryPermission(isDynamic: true);
-        } catch (e) {
-          print('SAF error: $e');
-        }
-        return permissionStatus.isGranted;
-      } else {
-        return permissionStatus.isGranted;
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        return true;
       }
+      var permissionStatus = await Permission.storage.status;
+      if (permissionStatus.isDenied) {
+        permissionStatus = await Permission.storage.request();
+      }
+      return permissionStatus.isGranted;
     }
     return true;
   }
@@ -217,26 +214,42 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
           fontSize: 16.0,
         );
 
+        String cleanFileName = fileName;
+        if (!cleanFileName.toLowerCase().endsWith('.jpg')) {
+          cleanFileName = '$cleanFileName.jpg';
+        }
+
         //Download a single file
         FileDownloader.downloadFile(
             url: imgUrl,
-            name: fileName,
+            name: cleanFileName,
             downloadDestination: DownloadDestinations.publicDownloads,
             onProgress: (fileName, double progress) {
 
             },
             onDownloadCompleted: (String path) {
-              // Menggunakan path unduhan dinamis yang dikembalikan oleh downloader agar kompatibel dengan Android & iOS
-              File downloadedFile = File(path);
-              String newPath = path.replaceAll('.php', '.jpg');
-              try {
-                downloadedFile.renameSync(newPath);
-              } catch (e) {
-                print("Gagal me-rename file: $e");
+              final decodedPath = Uri.decodeFull(path);
+              if (decodedPath.endsWith('.php')) {
+                try {
+                  final file = File(decodedPath);
+                  final newPath = decodedPath.replaceAll('.php', '.jpg');
+                  if (file.existsSync()) {
+                    file.renameSync(newPath);
+                  } else {
+                    // Coba gunakan path mentah jika file disimpan dengan %20 literal
+                    final rawFile = File(path);
+                    final rawNewPath = path.replaceAll('.php', '.jpg');
+                    if (rawFile.existsSync()) {
+                      rawFile.renameSync(rawNewPath);
+                    }
+                  }
+                } catch (e) {
+                  print("Gagal me-rename file: $e");
+                }
               }
 
               Fluttertoast.showToast(
-                msg: 'Infografis $fileName.jpg telah disimpan.',
+                msg: 'Infografis $fileName telah disimpan.',
                 toastLength: Toast.LENGTH_LONG,
                 gravity: ToastGravity.CENTER,
                 timeInSecForIosWeb: 1,
