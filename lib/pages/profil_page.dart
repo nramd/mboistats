@@ -9,6 +9,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:mboistats/config/auth_config.dart';
 import 'package:mboistats/services/recommendation_service.dart';
 import 'package:mboistats/services/customer_api_service.dart';
+import 'package:mboistats/services/auth_service.dart';
 
 class ProfilPage extends StatefulWidget {
   const ProfilPage({Key? key}) : super(key: key);
@@ -23,7 +24,6 @@ class _ProfilPageState extends State<ProfilPage> {
   String _userEmail = '';
   String? _userAvatar;
   String? _userMajor;
-  bool _isLoadingProfile = true;
 
   @override
   void initState() {
@@ -44,29 +44,36 @@ class _ProfilPageState extends State<ProfilPage> {
         _userName = user.userMetadata?['full_name'] ?? 'Pengguna';
         _userAvatar = user.userMetadata?['avatar_url'];
       });
-    }
-    final major = await RecommendationService.getMajor();
-    
-    // Tarik data kustomer dari Supabase (tabel users_buku_tamu) dengan fallback ke API Endpoint
-    CustomerProfileData? customerApiData;
-    if (_userEmail.isNotEmpty) {
-      customerApiData = await CustomerApiService.getCustomerFromSupabase(_userEmail);
-      customerApiData ??= await CustomerApiService.getCustomerByEmail(_userEmail);
-    }
+      final major = await RecommendationService.getMajor();
+      
+      // Tarik data kustomer dari Supabase dengan fallback ke API Endpoint
+      CustomerProfileData? customerApiData;
+      if (_userEmail.isNotEmpty) {
+        customerApiData = await CustomerApiService.getCustomerFromSupabase(_userEmail);
+        customerApiData ??= await CustomerApiService.getCustomerByEmail(_userEmail);
+      }
 
-    if (mounted) {
-      setState(() {
-        _userMajor = major;
-        if (customerApiData != null && customerApiData.name != null) {
-          _userName = customerApiData.name!;
-        }
-        _isLoadingProfile = false;
-      });
+      if (mounted) {
+        setState(() {
+          _userMajor = major;
+          if (customerApiData != null && customerApiData.name != null) {
+            _userName = customerApiData.name!;
+          }
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _userEmail = 'Masuk dengan Google untuk akses personal';
+          _userName = 'Mode Tamu';
+          _userAvatar = null;
+          _userMajor = null;
+        });
+      }
     }
   }
 
   void _showLogoutDialog() {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     showDialog(
       context: context,
@@ -177,106 +184,280 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
+  void _showGoogleLoginDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets_v2/icons/masuk.png',
+                width: 64,
+                height: 64,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Masuk dengan akun Google?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF29A9E0), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        minimumSize: const Size(0, 44),
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text(
+                        'Batal',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xFF29A9E0),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF29A9E0),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        minimumSize: const Size(0, 44),
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        LoggerService.logActivity(
+                          actionType: 'click_login_overlay',
+                          sectorCategory: 'auth',
+                          itemName: 'Masuk Google dari Profil',
+                        );
+                        try {
+                          final authResponse = await AuthService.signInWithGoogle();
+                          if (authResponse != null) {
+                            RecommendationService.clearLocalCache();
+                            await _loadProfileData();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Berhasil masuk dengan Google!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Gagal masuk: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text(
+                        'Masuk',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuestHeader(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.of(context).padding.top + 20,
+        20,
+        28,
+      ),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1D7BA3),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 78,
+            height: 78,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(color: Colors.white, width: 3),
+            ),
+            child: const CircleAvatar(
+              backgroundColor: Color(0xFFFFF6EE),
+              child: Icon(
+                Icons.person,
+                size: 54,
+                color: Color(0xFFC77C6B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          const Text(
+            'Tamu',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserHeader(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.of(context).padding.top + 24,
+        20,
+        28,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [headerTealStart, headerTealEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              backgroundColor: const Color(0xFFE2F3FC),
+              backgroundImage: _userAvatar != null ? NetworkImage(_userAvatar!) : null,
+              child: _userAvatar == null
+                  ? const Icon(
+                      Icons.person_rounded,
+                      size: 52,
+                      color: blueNormal,
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _userName,
+            style: pjsBold20.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _userEmail,
+            style: pjsRegular14.copyWith(
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (_userMajor != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.school_rounded, color: Colors.white, size: 16),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      _userMajor!,
+                      style: pjsSemiBold12.copyWith(color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isGuest = Supabase.instance.client.auth.currentUser == null;
 
     return Scaffold(
       backgroundColor: isDark ? Theme.of(context).scaffoldBackgroundColor : bgColor,
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Teal Gradient Header
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(
-                20,
-                MediaQuery.of(context).padding.top + 24,
-                20,
-                28,
-              ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [headerTealStart, headerTealEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(24),
-                  bottomRight: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(color: Colors.white, width: 3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      backgroundColor: const Color(0xFFE2F3FC),
-                      backgroundImage: _userAvatar != null ? NetworkImage(_userAvatar!) : null,
-                      child: _userAvatar == null
-                          ? const Icon(
-                              Icons.person_rounded,
-                              size: 52,
-                              color: blueNormal,
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _userName,
-                    style: pjsBold20.copyWith(color: Colors.white),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _userEmail,
-                    style: pjsRegular14.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                  if (_userMajor != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.school_rounded, color: Colors.white, size: 16),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              _userMajor!,
-                              style: pjsSemiBold12.copyWith(color: Colors.white),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
+            if (isGuest) _buildGuestHeader(context) else _buildUserHeader(context),
             const SizedBox(height: 20),
 
             // Card Menu Items
@@ -284,21 +465,35 @@ class _ProfilPageState extends State<ProfilPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Column(
                 children: [
-                  _buildMenuCard(
-                    context: context,
-                    iconPath: 'assets_v2/icons/edit_profil.png',
-                    title: 'Edit Profil',
-                    onTap: () {
-                      LoggerService.logActivity(
-                        actionType: 'click_menu',
-                        sectorCategory: 'profil',
-                        itemName: 'Edit Profil',
-                      );
-                      Navigator.pushNamed(context, '/edit_profil').then((_) {
-                        _loadProfileData();
-                      });
-                    },
-                  ),
+                  if (isGuest) ...[
+                    _buildMenuCard(
+                      context: context,
+                      iconPath: 'assets_v2/icons/masuk.png',
+                      title: 'Masuk',
+                      trailing: const Icon(
+                        Icons.arrow_right,
+                        size: 24,
+                        color: Colors.black87,
+                      ),
+                      onTap: _showGoogleLoginDialog,
+                    ),
+                  ] else ...[
+                    _buildMenuCard(
+                      context: context,
+                      iconPath: 'assets_v2/icons/edit_profil.png',
+                      title: 'Edit Profil',
+                      onTap: () {
+                        LoggerService.logActivity(
+                          actionType: 'click_menu',
+                          sectorCategory: 'profil',
+                          itemName: 'Edit Profil',
+                        );
+                        Navigator.pushNamed(context, '/edit_profil').then((_) {
+                          _loadProfileData();
+                        });
+                      },
+                    ),
+                  ],
                   _buildMenuCard(
                     context: context,
                     iconPath: 'assets_v2/icons/mode_gelap.png',
@@ -335,18 +530,20 @@ class _ProfilPageState extends State<ProfilPage> {
                       },
                     ),
                   ),
-                  _buildMenuCard(
-                    context: context,
-                    iconPath: 'assets_v2/icons/logout.png',
-                    title: 'Logout',
-                    onTap: _showLogoutDialog,
-                  ),
-                  _buildMenuCard(
-                    context: context,
-                    iconPath: 'assets_v2/icons/hapus_akun.png',
-                    title: 'Hapus Akun',
-                    onTap: _showDeleteAccountDialog,
-                  ),
+                  if (!isGuest) ...[
+                    _buildMenuCard(
+                      context: context,
+                      iconPath: 'assets_v2/icons/logout.png',
+                      title: 'Logout',
+                      onTap: _showLogoutDialog,
+                    ),
+                    _buildMenuCard(
+                      context: context,
+                      iconPath: 'assets_v2/icons/hapus_akun.png',
+                      title: 'Hapus Akun',
+                      onTap: _showDeleteAccountDialog,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                 ],
               ),
@@ -371,7 +568,7 @@ class _ProfilPageState extends State<ProfilPage> {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark ? Colors.white12 : const Color(0xFFEDEDED),
         ),
@@ -386,36 +583,29 @@ class _ProfilPageState extends State<ProfilPage> {
       child: Material(
         type: MaterialType.transparency,
         child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 40,
-          height: 40,
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF2F9FD),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Image.asset(
+          onTap: onTap,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Image.asset(
             iconPath,
-            width: 24,
-            height: 24,
+            width: 32,
+            height: 32,
+            fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) =>
-                const Icon(Icons.settings, color: blueNormal, size: 20),
+                const Icon(Icons.settings, color: blueNormal, size: 28),
           ),
-        ),
-        title: Text(
-          title,
-          style: pjsSemiBold14.copyWith(
-            color: isDark ? Colors.white : dark1,
-          ),
-        ),
-        trailing: trailing ??
-            Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.white54 : dark3,
+          title: Text(
+            title,
+            style: pjsSemiBold16.copyWith(
+              color: isDark ? Colors.white : dark1,
             ),
-      ),
+          ),
+          trailing: trailing ??
+              Icon(
+                Icons.arrow_right,
+                size: 24,
+                color: isDark ? Colors.white54 : Colors.black87,
+              ),
+        ),
       ),
     );
   }

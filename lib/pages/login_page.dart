@@ -54,9 +54,9 @@ class _LoginPageState extends State<LoginPage> {
         children: [
           // Background illustration at the bottom
           Positioned(
-            bottom: 15,
-            left: 15,
-            right: 15,
+            bottom: 0,
+            left: 0,
+            right: 0,
             child: Image.asset(
               'assets_v2/icons/login_bg.png',
               width: double.infinity,
@@ -77,8 +77,8 @@ class _LoginPageState extends State<LoginPage> {
                     style: TextStyle(
                       fontFamily: 'PlusJakartaSans',
                       fontWeight: FontWeight.w800,
-                      fontSize: 45,
-                      color: blueNormal,
+                      fontSize: 44,
+                      color: Color(0xFF29A9E0),
                       height: 1.1,
                     ),
                   ),
@@ -87,8 +87,8 @@ class _LoginPageState extends State<LoginPage> {
                     style: TextStyle(
                       fontFamily: 'PlusJakartaSans',
                       fontWeight: FontWeight.w800,
-                      fontSize: 45,
-                      color: Color(0xFF75C7EC), // blueLightActive
+                      fontSize: 44,
+                      color: Color(0xFF6DC4EB),
                       height: 1.1,
                     ),
                   ),
@@ -98,59 +98,109 @@ class _LoginPageState extends State<LoginPage> {
                     style: TextStyle(
                       fontFamily: 'PlusJakartaSans',
                       fontWeight: FontWeight.bold,
-                      fontSize: 30,
-                      color: orangeNormal,
+                      fontSize: 28,
+                      color: Color(0xFFE27D60),
                     ),
                   ),
 
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 44),
 
-                  // Google SSO Login Button
-                  Material(
-                    color: blueNormal,
-                    borderRadius: BorderRadius.circular(10),
-                    elevation: 3,
-                    child: InkWell(
-                      onTap: () async {
-                        try {
-                          final authResponse =
-                              await AuthService.signInWithGoogle();
-                          if (authResponse == null) {
-                            // User membatalkan / menutup popup login
-                            return;
-                          }
-                          // Navigasi ditangani otomatis oleh onAuthStateChange listener
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Gagal masuk: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
+                  // Google SSO Login Button (Pill shape)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF29A9E0),
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    onPressed: () async {
+                      try {
+                        final authResponse =
+                            await AuthService.signInWithGoogle();
+                        if (authResponse == null) {
+                          return;
                         }
-                      },
-                      child: Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset(
-                              'assets_v2/icons/google_login.png',
-                              width: 16,
-                              height: 16,
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Gagal masuk: $e'),
+                              backgroundColor: Colors.red,
                             ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Masuk dengan Google',
-                              style: pjsBold14.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+                          );
+                        }
+                      }
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Image.asset(
+                            'assets_v2/icons/google_login.png',
+                            width: 16,
+                            height: 16,
+                          ),
                         ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Masuk dengan Google',
+                          style: pjsBold14.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // "atau" separator
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12.0),
+                    child: Center(
+                      child: Text(
+                        'atau',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF828282),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Guest Mode Button (Outlined Pill shape)
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFF29A9E0), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    onPressed: () {
+                      LoggerService.logActivity(
+                        actionType: 'login_as_guest',
+                        sectorCategory: 'auth',
+                        itemName: 'Masuk Mode Tamu',
+                        userId: 'anonymous',
+                      );
+                      Navigator.pushReplacementNamed(context, '/main');
+                    },
+                    child: const Text(
+                      'Masuk sebagai Tamu',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF29A9E0),
                       ),
                     ),
                   ),

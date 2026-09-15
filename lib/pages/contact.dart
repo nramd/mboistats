@@ -122,13 +122,7 @@ class Contact extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Menu List Tiles (Informasi Pelayanan, Tentang Kami, Galeri InovaZI, Pengaduan, Feedback)
-              _buildMenuItem(
-                context: context,
-                icon: 'assets_v2/icons/informasi_pelayanan.png',
-                title: 'Informasi Pelayanan',
-                onTap: () => _logAndNavigate(context, 'click_informasi_pelayanan', 'Informasi Pelayanan', '/informasipelayanan'),
-              ),
+              // Menu List Tiles (Tentang Kami, Galeri InovaZI, Pengaduan, Feedback)
               _buildMenuItem(
                 context: context,
                 icon: 'assets_v2/icons/tentang_kami.png',

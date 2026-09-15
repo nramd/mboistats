@@ -1,16 +1,12 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:fluttertoast/fluttertoast.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter_file_downloader/flutter_file_downloader.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/components/footer.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/services/youtube_service.dart';
+import 'package:mboistats/utils/download_helper.dart';
 import 'package:mboistats/theme.dart';
 
 class DataPage extends StatefulWidget {
@@ -1176,98 +1172,13 @@ class _DataPageState extends State<DataPage> {
 
   Future<void> _downloadAndOpenPdf(String pdfUrl, String fileName, String? coverUrl) async {
     final cleanSector = LoggerService.classifySector(fileName);
-
-    if (Platform.isIOS) {
-      try {
-        Fluttertoast.showToast(
-          msg: "Menyiapkan berkas...",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.CENTER,
-          backgroundColor: Colors.blue,
-          textColor: Colors.white,
-          fontSize: 16.0,
-        );
-
-        final response = await http.get(Uri.parse(pdfUrl));
-        if (response.statusCode == 200) {
-          final dir = await getTemporaryDirectory();
-          final cleanName = fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
-          final filePath = '${dir.path}/$cleanName.pdf';
-          final file = File(filePath);
-          await file.writeAsBytes(response.bodyBytes);
-
-          LoggerService.logActivity(
-            actionType: 'download_file',
-            sectorCategory: cleanSector,
-            itemName: fileName,
-            coverUrl: coverUrl,
-            contentUrl: pdfUrl,
-          );
-
-          await OpenFile.open(filePath);
-        } else {
-          throw Exception("Gagal mengunduh berkas dari server.");
-        }
-      } catch (error) {
-        Fluttertoast.showToast(
-          msg: "Gagal mengunduh: $error",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.CENTER,
-          backgroundColor: Colors.blue,
-          textColor: Colors.white,
-          fontSize: 16.0,
-        );
-      }
-      return;
-    }
-
-    try {
-      Fluttertoast.showToast(
-        msg: "Memulai unduhan...",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-        backgroundColor: Colors.blue,
-        textColor: Colors.white,
-      );
-
-      final cleanName = fileName.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
-      await FileDownloader.downloadFile(
-        url: pdfUrl,
-        name: cleanName.endsWith('.pdf') ? cleanName : '$cleanName.pdf',
-        onDownloadCompleted: (String path) {
-          LoggerService.logActivity(
-            actionType: 'download_file',
-            sectorCategory: cleanSector,
-            itemName: fileName,
-            coverUrl: coverUrl,
-            contentUrl: pdfUrl,
-          );
-          Fluttertoast.showToast(
-            msg: "Unduhan selesai.",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.CENTER,
-            backgroundColor: Colors.blue,
-            textColor: Colors.white,
-          );
-        },
-        onDownloadError: (String error) {
-          Fluttertoast.showToast(
-            msg: "Gagal mengunduh: $error",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.CENTER,
-            backgroundColor: Colors.red,
-            textColor: Colors.white,
-          );
-        },
-      );
-    } catch (e) {
-      Fluttertoast.showToast(
-        msg: "Gagal mengunduh: $e",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-    }
+    await DownloadHelper.downloadDocument(
+      context,
+      url: pdfUrl,
+      fileName: fileName,
+      coverUrl: coverUrl,
+      sectorCategory: cleanSector,
+      showConfirmation: true,
+    );
   }
 }

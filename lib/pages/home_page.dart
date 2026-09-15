@@ -5,6 +5,7 @@ import 'package:mboistats/components/menus.dart';
 import 'package:mboistats/components/recommendations.dart';
 import 'package:mboistats/components/recently_viewed.dart';
 import 'package:mboistats/services/youtube_service.dart';
+import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
@@ -245,6 +246,58 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildInformasiPelayananCard(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Material(
+        color: isDark ? const Color(0xFF1E2830) : const Color(0xFFEBF7FC),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            LoggerService.logActivity(
+              actionType: 'click_informasi_pelayanan',
+              sectorCategory: 'kontak',
+              itemName: 'Informasi Pelayanan',
+            );
+            Navigator.pushNamed(context, '/informasipelayanan');
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark ? const Color(0xFF2E4553) : const Color(0xFF70C5EA),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets_v2/icons/informasi_pelayanan.png',
+                  width: 24,
+                  height: 24,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.support_agent_rounded, color: blueNormal, size: 24),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Informasi Pelayanan',
+                  style: pjsBold14.copyWith(
+                    color: isDark ? Colors.white : dark1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -327,9 +380,13 @@ class _HomePageState extends State<HomePage> {
                       // Live YouTube Banner (kondisional - hanya muncul saat live)
                       _buildLiveYouTubeBanner(isDark),
                       const SizedBox(height: 12),
+                      _buildInformasiPelayananCard(isDark),
+                      const SizedBox(height: 12),
                       RecommendationSection(),
-                      const SizedBox(height: 8),
-                      RecentlyViewedSection(),
+                      if (Supabase.instance.client.auth.currentUser != null) ...[
+                        const SizedBox(height: 8),
+                        RecentlyViewedSection(),
+                      ],
                       const SizedBox(height: 10),
                     ],
                   ),

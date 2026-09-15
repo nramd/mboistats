@@ -137,8 +137,8 @@ class LoggerService {
     final deviceId = await getDeviceId();
     final platformName = Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'unknown');
     final currentUser = Supabase.instance.client.auth.currentUser;
-    final activeUserId = userId ?? currentUser?.email ?? currentUser?.id;
-    final accountIdentifier = currentUser?.email ?? currentUser?.id ?? "Anonymous";
+    final activeUserId = userId ?? currentUser?.email ?? currentUser?.id ?? 'anonymous';
+    final accountIdentifier = currentUser?.email ?? currentUser?.id ?? 'anonymous';
     final cleanSector = sanitizeSector(sectorCategory);
     final resolvedType = resolveContentType(
       actionType: actionType,

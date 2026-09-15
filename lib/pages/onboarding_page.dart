@@ -197,14 +197,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
           _buildUserTypeCard(
             type: 'umum',
             title: 'Umum',
-            icon: Icons.public,
+            iconAsset: 'assets_v2/icons/umum.png',
             desc: 'Saya masyarakat umum yang ingin mengakses data statistik',
           ),
           const SizedBox(height: 16),
           _buildUserTypeCard(
             type: 'mahasiswa',
             title: 'Mahasiswa',
-            icon: Icons.school,
+            iconAsset: 'assets_v2/icons/mahasiswa.png',
             desc: 'Saya mahasiswa yang membutuhkan data untuk penelitian',
           ),
         ],
@@ -215,7 +215,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Widget _buildUserTypeCard({
     required String type,
     required String title,
-    required IconData icon,
+    required String iconAsset,
     required String desc,
   }) {
     final isSelected = _userType == type;
@@ -250,7 +250,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? blue1.withOpacity(0.05) : Colors.white,
+          color: isSelected ? blue1.withValues(alpha: 0.05) : Colors.white,
           border: Border.all(
             color: isSelected ? blue1 : Colors.grey.shade200,
             width: isSelected ? 2 : 1,
@@ -259,7 +259,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 40, color: isSelected ? blue1 : dark3),
+            Image.asset(
+              iconAsset,
+              width: 44,
+              height: 44,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) =>
+                  Icon(type == 'umum' ? Icons.public : Icons.school, size: 40, color: isSelected ? blue1 : dark3),
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(

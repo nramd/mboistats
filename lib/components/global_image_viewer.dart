@@ -1,12 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_file_downloader/flutter_file_downloader.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
-import 'package:fluttertoast/fluttertoast.dart';
-import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
+import 'package:mboistats/utils/download_helper.dart';
 
 class GlobalImageViewer extends StatefulWidget {
   final String imageUrl;
@@ -27,68 +21,13 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
   double _downloadProgress = 0.0;
 
   Future<void> _downloadImage() async {
-    setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
-    });
-
-    try {
-      LoggerService.logActivity(
-        actionType: 'download_file',
-        sectorCategory: 'INFOGRAFIS',
-        itemName: widget.title,
-      );
-
-      String extension = widget.imageUrl.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
-      String fileName = widget.title.replaceAll(RegExp(r'[^\w\s]+'), '').replaceAll(' ', '_') + extension;
-
-      if (Platform.isIOS) {
-        final response = await http.get(Uri.parse(widget.imageUrl));
-        if (response.statusCode == 200) {
-          final tempDir = await getTemporaryDirectory();
-          final file = File('${tempDir.path}/$fileName');
-          await file.writeAsBytes(response.bodyBytes);
-          
-          if (mounted) {
-            setState(() => _isDownloading = false);
-            Fluttertoast.showToast(msg: "Download berhasil. Membuka file...");
-            await OpenFile.open(file.path);
-          }
-        } else {
-          throw Exception('Gagal mengunduh gambar');
-        }
-      } else {
-        FileDownloader.downloadFile(
-          url: widget.imageUrl,
-          name: fileName,
-          onProgress: (fileName, progress) {
-            if (mounted) {
-              setState(() {
-                _downloadProgress = progress / 100;
-              });
-            }
-          },
-          onDownloadCompleted: (path) async {
-            if (mounted) {
-              setState(() => _isDownloading = false);
-              Fluttertoast.showToast(msg: "Download berhasil. Membuka file...");
-              await OpenFile.open(path);
-            }
-          },
-          onDownloadError: (errorMessage) {
-            if (mounted) {
-              setState(() => _isDownloading = false);
-              Fluttertoast.showToast(msg: "Download gagal: $errorMessage");
-            }
-          },
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isDownloading = false);
-        Fluttertoast.showToast(msg: "Terjadi kesalahan saat mengunduh: $e");
-      }
-    }
+    await DownloadHelper.downloadInfografis(
+      context,
+      url: widget.imageUrl,
+      fileName: widget.title,
+      coverUrl: widget.imageUrl,
+      showConfirmation: true,
+    );
   }
 
   @override

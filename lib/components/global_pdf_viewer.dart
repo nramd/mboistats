@@ -2,13 +2,13 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:flutter_file_downloader/flutter_file_downloader.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:mboistats/theme.dart';
 import 'package:mboistats/services/logger_service.dart';
+import 'package:mboistats/utils/download_helper.dart';
 
 /// Native Flutter PDF Viewer (Varian B)
 /// Menggunakan Syncfusion C++ PDFium Canvas Engine & Local Disk Caching
@@ -97,18 +97,6 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
       _isDownloading = true;
     });
 
-    LoggerService.logActivity(
-      actionType: 'download_file',
-      sectorCategory: LoggerService.classifySector(widget.title),
-      itemName: widget.title,
-      contentUrl: widget.pdfUrl,
-    );
-
-    String fileName = widget.title.replaceAll(RegExp(r'[^\w\s\-\.]'), '_');
-    if (!fileName.toLowerCase().endsWith('.pdf')) {
-      fileName = '$fileName.pdf';
-    }
-
     try {
       if (Platform.isIOS) {
         Fluttertoast.showToast(
@@ -119,12 +107,20 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
           textColor: Colors.white,
         );
 
+        final safeName = DownloadHelper.sanitizeFileName(widget.title, '.pdf');
         final response = await http.get(Uri.parse(widget.pdfUrl));
         if (response.statusCode == 200) {
           final dir = await getTemporaryDirectory();
-          final filePath = '${dir.path}/$fileName';
+          final filePath = '${dir.path}/$safeName';
           final file = File(filePath);
           await file.writeAsBytes(response.bodyBytes);
+
+          LoggerService.logActivity(
+            actionType: 'download_file',
+            sectorCategory: LoggerService.classifySector(widget.title),
+            itemName: widget.title,
+            contentUrl: widget.pdfUrl,
+          );
 
           Fluttertoast.showToast(
             msg: "Unduhan selesai.",
@@ -139,55 +135,12 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
           throw Exception("Gagal mengunduh berkas dari server.");
         }
       } else {
-        Fluttertoast.showToast(
-          msg: "Berkas sedang diunduh...",
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.CENTER,
-          backgroundColor: blueNormal,
-          textColor: Colors.white,
-        );
-
-        await FileDownloader.downloadFile(
+        await DownloadHelper.downloadDocument(
+          context,
           url: widget.pdfUrl,
-          name: fileName,
-          downloadDestination: DownloadDestinations.publicDownloads,
-          onProgress: (name, double progress) {},
-          onDownloadCompleted: (String path) {
-            final decodedPath = Uri.decodeFull(path);
-            if (decodedPath.endsWith('.php')) {
-              try {
-                final file = File(decodedPath);
-                final newPath = decodedPath.replaceAll('.php', '.pdf');
-                if (file.existsSync()) {
-                  file.renameSync(newPath);
-                } else {
-                  final rawFile = File(path);
-                  final rawNewPath = path.replaceAll('.php', '.pdf');
-                  if (rawFile.existsSync()) {
-                    rawFile.renameSync(rawNewPath);
-                  }
-                }
-              } catch (e) {
-                print("Gagal me-rename file: $e");
-              }
-            }
-
-            Fluttertoast.showToast(
-              msg: 'Berkas berhasil disimpan di folder Download.',
-              toastLength: Toast.LENGTH_LONG,
-              gravity: ToastGravity.CENTER,
-              backgroundColor: blueNormal,
-              textColor: Colors.white,
-            );
-          },
-          onDownloadError: (String error) {
-            Fluttertoast.showToast(
-              msg: "Gagal mengunduh berkas.",
-              toastLength: Toast.LENGTH_SHORT,
-              backgroundColor: blueNormal,
-              textColor: Colors.white,
-            );
-          },
+          fileName: widget.title,
+          sectorCategory: LoggerService.classifySector(widget.title),
+          showConfirmation: true,
         );
       }
     } catch (e) {
