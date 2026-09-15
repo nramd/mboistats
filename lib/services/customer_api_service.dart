@@ -70,6 +70,25 @@ class CustomerProfileData {
 
 /// Service untuk menghubungkan Aplikasi Flutter dengan API Buku Tamu
 class CustomerApiService {
+  static String? _cachedUserName;
+
+  /// Simpan nama kustomer ke memori cache
+  static void setCachedUserName(String? name) {
+    if (name != null && name.trim().isNotEmpty) {
+      _cachedUserName = name.trim();
+    } else {
+      _cachedUserName = null;
+    }
+  }
+
+  /// Ambil nama kustomer dari memori cache
+  static String? getCachedUserName() => _cachedUserName;
+
+  /// Bersihkan cache
+  static void clearCache() {
+    _cachedUserName = null;
+  }
+
   /// Mengambil data customer berdasarkan email dari API Endpoint
   static Future<CustomerProfileData?> getCustomerByEmail(String email) async {
     try {
@@ -90,7 +109,11 @@ class CustomerApiService {
             : body;
 
         if (dataJson != null && dataJson is Map<String, dynamic>) {
-          return CustomerProfileData.fromJson(dataJson);
+          final profile = CustomerProfileData.fromJson(dataJson);
+          if (profile.name != null && profile.name!.trim().isNotEmpty) {
+            _cachedUserName = profile.name!.trim();
+          }
+          return profile;
         }
       }
     } catch (_) {
@@ -109,7 +132,11 @@ class CustomerApiService {
           .maybeSingle();
 
       if (data != null) {
-        return CustomerProfileData.fromJson(Map<String, dynamic>.from(data));
+        final profile = CustomerProfileData.fromJson(Map<String, dynamic>.from(data));
+        if (profile.name != null && profile.name!.trim().isNotEmpty) {
+          _cachedUserName = profile.name!.trim();
+        }
+        return profile;
       }
       return null;
     } catch (e) {
@@ -135,6 +162,10 @@ class CustomerApiService {
           .from('user_all')
           .update(updateData)
           .eq('email', email);
+
+      if (updateData.containsKey('name') && updateData['name'] != null) {
+        _cachedUserName = updateData['name'].toString().trim();
+      }
       return true;
     } catch (e) {
       print("updateCustomerInSupabase Error: $e");

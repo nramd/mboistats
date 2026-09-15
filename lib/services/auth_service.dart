@@ -3,6 +3,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/config/auth_config.dart';
 import 'package:mboistats/services/logger_service.dart';
+import 'package:mboistats/services/customer_api_service.dart';
+import 'package:mboistats/services/recommendation_service.dart';
 
 /// Service untuk menangani otentikasi pengguna menggunakan Native Google Sign-In
 /// terintegrasi dengan Supabase Auth (metode `signInWithIdToken`).
@@ -52,6 +54,37 @@ class AuthService {
         idToken: idToken,
       );
 
+      // Sinkronkan nama pengguna: Cek apakah user sudah punya nama kustom di tabel user_all
+      final userEmail = authResponse.user?.email;
+      if (userEmail != null && userEmail.isNotEmpty) {
+        try {
+          final userData = await _supabase
+              .from('user_all')
+              .select('name')
+              .eq('email', userEmail)
+              .maybeSingle();
+
+          if (userData != null && userData['name'] != null) {
+            final savedName = (userData['name'] as String).trim();
+            if (savedName.isNotEmpty) {
+              CustomerApiService.setCachedUserName(savedName);
+              // Pulihkan ke metadata Supabase Auth agar tidak tertimpa nama Google SSO
+              await _supabase.auth.updateUser(
+                UserAttributes(data: {'full_name': savedName}),
+              );
+            }
+          } else {
+            final initialName = (authResponse.user?.userMetadata?['full_name'] ??
+                    authResponse.user?.userMetadata?['name'] ??
+                    'Pengguna')
+                .toString();
+            CustomerApiService.setCachedUserName(initialName);
+          }
+        } catch (e) {
+          print('Error syncing profile name on login: $e');
+        }
+      }
+
       LoggerService.logActivity(
         actionType: 'login_success',
         sectorCategory: 'auth',
@@ -94,6 +127,8 @@ class AuthService {
 
   /// Keluar dari sesi Supabase Auth dan Google Sign-In.
   static Future<void> signOut() async {
+    CustomerApiService.clearCache();
+    RecommendationService.clearLocalCache();
     try {
       await GoogleSignIn.instance.signOut();
     } catch (_) {

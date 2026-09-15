@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/services/logger_service.dart';
+import 'package:mboistats/services/customer_api_service.dart';
 
 class RecommendedItem {
   final String title;
@@ -90,9 +91,13 @@ class RecommendationService {
       final typeUser = (major == 'Umum') ? 'umum' : 'mahasiswa';
 
       // 3. Upsert ke user_all
+      final savedName = CustomerApiService.getCachedUserName() ??
+          user?.userMetadata?['full_name'] ??
+          user?.userMetadata?['name'];
+
       await _client.from('user_all').upsert({
         'email': profileId,
-        'name': user?.userMetadata?['full_name'] ?? user?.userMetadata?['name'],
+        'name': savedName,
         'type_user': typeUser,
         'major_id_major': majorId,
       }, onConflict: 'email');
@@ -602,9 +607,12 @@ class RecommendationService {
       for (var item in response) {
         final name = (item['title'] as String? ?? '').trim();
         final nameLower = name.toLowerCase();
-        final sector = (item['categories']?['category'] ?? item['module_name'] ?? '').toString().toLowerCase();
+        var sector = (item['categories']?['category'] ?? item['module_name'] ?? '').toString().toLowerCase();
 
         if (name.isEmpty) continue;
+        if (!validSectors.contains(sector)) {
+          sector = LoggerService.classifySector(name).toLowerCase();
+        }
         if (!validSectors.contains(sector)) continue;
         if (nameLower.startsWith('halaman') ||
             nameLower.contains('kontak') ||

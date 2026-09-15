@@ -39,9 +39,10 @@ class _ProfilPageState extends State<ProfilPage> {
   Future<void> _loadProfileData() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
+      final cachedName = CustomerApiService.getCachedUserName();
       setState(() {
         _userEmail = user.email ?? '';
-        _userName = user.userMetadata?['full_name'] ?? 'Pengguna';
+        _userName = cachedName ?? user.userMetadata?['full_name'] ?? 'Pengguna';
         _userAvatar = user.userMetadata?['avatar_url'];
       });
       final major = await RecommendationService.getMajor();
@@ -58,6 +59,7 @@ class _ProfilPageState extends State<ProfilPage> {
           _userMajor = major;
           if (customerApiData != null && customerApiData.name != null) {
             _userName = customerApiData.name!;
+            CustomerApiService.setCachedUserName(customerApiData.name!);
           }
         });
       }
@@ -105,6 +107,7 @@ class _ProfilPageState extends State<ProfilPage> {
               );
               try {
                 RecommendationService.clearLocalCache();
+                CustomerApiService.clearCache();
                 await GoogleSignIn.instance.initialize(
                   serverClientId: AuthConfig.webClientId,
                   clientId: AuthConfig.iosClientId,
@@ -157,6 +160,7 @@ class _ProfilPageState extends State<ProfilPage> {
                 itemName: 'Hapus Akun',
               );
               try {
+                CustomerApiService.clearCache();
                 await GoogleSignIn.instance.initialize(
                   serverClientId: AuthConfig.webClientId,
                   clientId: AuthConfig.iosClientId,

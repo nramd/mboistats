@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/services/recommendation_service.dart';
 import 'package:mboistats/theme.dart';
@@ -13,11 +15,24 @@ class RecentlyViewedSection extends StatefulWidget {
 
 class _RecentlyViewedSectionState extends State<RecentlyViewedSection> with RouteAware {
   late Future<List<Map<String, dynamic>>> _recentlyViewedFuture;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
-    _recentlyViewedFuture = RecommendationService.getRecentlyViewed(limit: 2);
+    _refreshRecentlyViewed();
+    // Dengarkan perubahan login/logout agar riwayat langsung ter-update reaktif
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+      if (mounted) {
+        _refreshRecentlyViewed();
+      }
+    });
+  }
+
+  void _refreshRecentlyViewed() {
+    setState(() {
+      _recentlyViewedFuture = RecommendationService.getRecentlyViewed(limit: 2);
+    });
   }
 
   @override
@@ -31,15 +46,14 @@ class _RecentlyViewedSectionState extends State<RecentlyViewedSection> with Rout
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     MyApp.routeObserver.unsubscribe(this);
     super.dispose();
   }
 
   @override
   void didPopNext() {
-    setState(() {
-      _recentlyViewedFuture = RecommendationService.getRecentlyViewed(limit: 2);
-    });
+    _refreshRecentlyViewed();
   }
 
   String _resolveRoute(String title, String sector) {

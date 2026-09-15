@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mboistats/main.dart';
 import 'package:mboistats/components/footer.dart';
 import 'package:mboistats/components/menus.dart';
 import 'package:mboistats/components/recommendations.dart';
 import 'package:mboistats/components/recently_viewed.dart';
 import 'package:mboistats/services/youtube_service.dart';
 import 'package:mboistats/services/logger_service.dart';
+import 'package:mboistats/services/customer_api_service.dart';
 import 'package:mboistats/theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
@@ -18,20 +21,59 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with RouteAware {
   Map<String, dynamic>? _liveStream;
   YoutubePlayerController? _youtubeController;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _checkLiveStream();
+    _refreshUserData();
+    // Dengarkan perubahan auth (login / logout dari tab mana pun)
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (mounted) {
+        _refreshUserData();
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute != null) {
+      MyApp.routeObserver.subscribe(this, modalRoute);
+    }
   }
 
   @override
   void dispose() {
+    MyApp.routeObserver.unsubscribe(this);
+    _authSubscription?.cancel();
     _youtubeController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // Dipanggil saat user kembali ke Beranda dari halaman lain (Profil, Detail Statistik, dll)
+    _checkLiveStream();
+    _refreshUserData();
+    setState(() {});
+  }
+
+  Future<void> _refreshUserData() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null && user.email != null) {
+      final profile = await CustomerApiService.getCustomerFromSupabase(user.email!);
+      if (profile?.name != null && mounted) {
+        CustomerApiService.setCachedUserName(profile!.name);
+        setState(() {});
+      }
+    }
   }
 
   Future<void> _checkLiveStream() async {
@@ -58,6 +100,12 @@ class _HomePageState extends State<HomePage> {
   String _getUserName() {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
+      // 1. Prioritaskan nama kustom yang disimpan di user_all / cache
+      final cached = CustomerApiService.getCachedUserName();
+      if (cached != null && cached.trim().isNotEmpty) {
+        return cached.trim().split(' ').first;
+      }
+      // 2. Fallback ke metadata akun Supabase
       final metadata = user.userMetadata;
       if (metadata != null && metadata.containsKey('full_name')) {
         final name = metadata['full_name'].toString();

@@ -84,6 +84,9 @@ class _EditProfilPageState extends State<EditProfilPage> {
         );
       }
       
+      // 3. Update memori cache agar aktif seketika di Beranda & Profil tanpa delay
+      CustomerApiService.setCachedUserName(fullName);
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
