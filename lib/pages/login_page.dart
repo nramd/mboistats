@@ -136,19 +136,12 @@ class _LoginPageState extends State<LoginPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Image.asset(
-                            'assets_v2/icons/google_login.png',
-                            width: 16,
-                            height: 16,
-                          ),
+                        Image.asset(
+                          'assets_v2/icons/google_login.png',
+                          width: 20,
+                          height: 20,
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Text(
                           'Masuk dengan Google',
                           style: pjsBold14.copyWith(
