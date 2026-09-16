@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:saf/saf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/components/global_pdf_viewer.dart';
 import 'package:mboistats/utils/download_helper.dart';
@@ -31,20 +32,43 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
 
   Future<void> fetchData() async {
     try {
+      final response = await Supabase.instance.client
+          .from('contents')
+          .select()
+          .or('content_type.eq.publikasi,action_type.eq.view_publikasi_pdf')
+          .order('created_at', ascending: false)
+          .limit(10);
+      final list = List<Map<String, dynamic>>.from(response);
+      if (list.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            dataPublikasi = list.map((item) => {
+              'id': item['id']?.toString(),
+              'title': item['title'] ?? item['item_name'],
+              'cover': item['cover_url'],
+              'pdf': item['content_url'],
+              'rl_date': item['created_at']?.toString().split('T')[0],
+            }).toList();
+          });
+        }
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback BPS API
+    try {
       final response = await http.get(Uri.parse('http://webapi.bps.go.id/v1/api/list/domain/3573/model/publication/lang/ind/page/1/key/9db89e91c3c142df678e65a78c4e547f'));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final publications = (data['data'][1] as List).cast<Map<String, dynamic>>();
-        setState(() {
-          dataPublikasi = publications;
-        });
-      } else {
-        throw Exception('Gagal mendapatkan data.');
+        if (mounted) {
+          setState(() {
+            dataPublikasi = publications;
+          });
+        }
       }
-    } catch (error) {
-
-    }
+    } catch (error) {}
   }
 
   @override
@@ -183,9 +207,11 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
                     Navigator.pop(context);
                     final item = dataPublikasi.firstWhere((x) => x['pdf'] == tautan, orElse: () => {});
                     final coverUrl = item['cover'] as String?;
+                    final contentId = item['id']?.toString();
                     LoggerService.logActivity(
-                      actionType: 'view_pdf',
+                      actionType: 'view_publikasi_pdf',
                       contentType: 'publikasi',
+                      contentId: contentId,
                       sectorCategory: LoggerService.classifySector(judul),
                       itemName: judul,
                       coverUrl: coverUrl,
@@ -207,14 +233,15 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
   Future<void> downloadAndShowConfirmation(BuildContext context, String pdfUrl, String fileName) async {
     final item = dataPublikasi.firstWhere((x) => x['pdf'] == pdfUrl, orElse: () => {});
     final coverUrl = item['cover'] as String?;
+    final contentId = item['id']?.toString();
 
     await DownloadHelper.downloadDocument(
       context,
       url: pdfUrl,
       fileName: fileName,
+      contentId: contentId,
       coverUrl: coverUrl,
-      sectorCategory: 'publikasi',
-      showConfirmation: true,
+      sectorCategory: LoggerService.classifySector(fileName),
     );
   }
   void openPdfDirectly(BuildContext context, String pdfUrl, String title) {

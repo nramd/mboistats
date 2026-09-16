@@ -89,8 +89,9 @@ class _RecommendationSectionState extends State<RecommendationSection> {
                             item.route == '/berita' ||
                             item.route == '/publikasi') {
                           LoggerService.logActivity(
-                            actionType: isInfografis ? 'download_file' : 'view_pdf',
+                            actionType: isInfografis ? 'download_file' : (inferredType == 'brs' ? 'view_brs_pdf' : 'view_publikasi_pdf'),
                             contentType: inferredType,
+                            contentId: item.contentId,
                             sectorCategory: LoggerService.classifySector(title),
                             itemName: title,
                             coverUrl: coverUrl,
@@ -110,6 +111,8 @@ class _RecommendationSectionState extends State<RecommendationSection> {
                             item.route == '/infografis') {
                           LoggerService.logActivity(
                             actionType: 'download_file',
+                            contentType: 'infografis',
+                            contentId: item.contentId,
                             sectorCategory: LoggerService.classifySector(title),
                             itemName: title,
                             coverUrl: coverUrl,

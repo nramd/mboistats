@@ -115,6 +115,7 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
         setState(() {
           if (list.isNotEmpty) {
             _dataInfografis.addAll(list.map((item) => {
+              'id': item['id']?.toString(),
               'title': item['title'] ?? item['item_name'],
               'img': item['cover_url'],
               'dl': item['content_url'],
@@ -286,6 +287,7 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
                                 LoggerService.logActivity(
                                   actionType: 'download_file',
                                   contentType: 'infografis',
+                                  contentId: item['id']?.toString(),
                                   sectorCategory: LoggerService.classifySector(title),
                                   itemName: title,
                                   coverUrl: imgUrl,

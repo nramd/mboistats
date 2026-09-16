@@ -79,6 +79,8 @@ class RouteManager {
         return GlobalPDFViewer(
           pdfUrl: args['pdfUrl']?.toString() ?? '',
           title: args['title']?.toString() ?? 'Dokumen Statistik',
+          contentType: args['contentType']?.toString(),
+          contentId: args['contentId']?.toString(),
         );
       } else if (args is String) {
         return GlobalPDFViewer(

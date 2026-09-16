@@ -185,7 +185,6 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
       url: imgUrl,
       fileName: fileName,
       coverUrl: imgUrl,
-      showConfirmation: true,
     );
   }
 }

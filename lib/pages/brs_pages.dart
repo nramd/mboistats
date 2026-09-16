@@ -110,6 +110,7 @@ class _BeritaPageState extends State<BeritaPages> {
         setState(() {
           if (list.isNotEmpty) {
             dataBRS.addAll(list.map((item) => {
+              'id': item['id']?.toString(),
               'title': item['title'] ?? item['item_name'],
               'thumbnail': item['cover_url'],
               'pdf': item['content_url'],
@@ -398,7 +399,15 @@ class _BeritaPageState extends State<BeritaPages> {
                   onPressed: () async {
                     Navigator.pop(context);
                     String fileName = dataBRS[index]["title"];
-                    await downloadAndShowConfirmation(context, pdfUrl, fileName);
+                    final contentId = dataBRS[index]["id"] as String?;
+                    final coverUrl = dataBRS[index]["thumbnail"] as String?;
+                    await downloadAndShowConfirmation(
+                      context,
+                      pdfUrl,
+                      fileName,
+                      contentId: contentId,
+                      coverUrl: coverUrl,
+                    );
                   },
                   child: const Text("Unduh"),
                 ),
@@ -406,15 +415,17 @@ class _BeritaPageState extends State<BeritaPages> {
                   onPressed: () {
                     Navigator.pop(context);
                     String fileName = dataBRS[index]["title"];
+                    final contentId = dataBRS[index]["id"] as String?;
                     LoggerService.logActivity(
-                      actionType: 'view_pdf',
+                      actionType: 'view_brs_pdf',
                       contentType: 'brs',
+                      contentId: contentId,
                       sectorCategory: LoggerService.classifySector(fileName),
                       itemName: fileName,
                       coverUrl: dataBRS[index]["thumbnail"],
                       contentUrl: pdfUrl,
                     );
-                    openPdfDirectly(context, pdfUrl, fileName);
+                    openPdfDirectly(context, pdfUrl, fileName, contentId: contentId);
                   },
                   child: const Text("Buka PDF"),
                 ),
@@ -426,25 +437,38 @@ class _BeritaPageState extends State<BeritaPages> {
     );
   }
 
-  Future<void> downloadAndShowConfirmation(BuildContext context, String pdfUrl, String fileName) async {
+  Future<void> downloadAndShowConfirmation(
+    BuildContext context,
+    String pdfUrl,
+    String fileName, {
+    String? contentId,
+    String? coverUrl,
+  }) async {
     final item = dataBRS.firstWhere((x) => x['pdf'] == pdfUrl, orElse: () => {});
-    final coverUrl = item['thumbnail'] as String?;
+    final resolvedCover = coverUrl ?? item['thumbnail'] as String?;
+    final resolvedId = contentId ?? item['id'] as String?;
 
     await DownloadHelper.downloadDocument(
       context,
       url: pdfUrl,
       fileName: fileName,
-      coverUrl: coverUrl,
+      contentType: 'brs',
+      contentId: resolvedId,
+      coverUrl: resolvedCover,
       sectorCategory: LoggerService.classifySector(fileName),
-      showConfirmation: true,
     );
   }
 
-  void openPdfDirectly(BuildContext context, String pdfUrl, String title) {
+  void openPdfDirectly(BuildContext context, String pdfUrl, String title, {String? contentId}) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GlobalPDFViewer(pdfUrl: pdfUrl, title: title),
+        builder: (context) => GlobalPDFViewer(
+          pdfUrl: pdfUrl,
+          title: title,
+          contentType: 'brs',
+          contentId: contentId,
+        ),
       ),
     );
   }

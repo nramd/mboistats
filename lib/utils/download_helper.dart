@@ -4,13 +4,16 @@ import 'package:flutter_file_downloader/flutter_file_downloader.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 
 /// Helper terpusat untuk menangani proses pengunduhan berkas dokumen (.pdf) dan infografis (.jpeg)
-/// Dilengkapi dialog edukasi izin penyimpanan, pembersihan nama berkas, dan auto-rename jika server BPS mengembalikan berkas .php.
+/// Mendukung penuh Android & iOS, meminta izin sistem OS asli, auto-rename format anti-.php,
+/// dan otomatis mencatat aktivitas unduh ke Supabase / Dashboard Monitoring.
 class DownloadHelper {
-  /// Memeriksa dan meminta izin penyimpanan/notifikasi yang diperlukan sesuai versi OS
+  /// Memeriksa dan meminta izin penyimpanan/notifikasi sistem OS asli
   static Future<bool> checkAndRequestPermissions() async {
     if (Platform.isAndroid) {
       try {
@@ -18,7 +21,7 @@ class DownloadHelper {
         final androidInfo = await deviceInfo.androidInfo;
 
         if (androidInfo.version.sdkInt >= 33) {
-          // Android 13+ memerlukan izin notifikasi agar status download bar muncul
+          // Android 13+ memerlukan izin notifikasi
           final notifStatus = await Permission.notification.status;
           if (notifStatus.isDenied) {
             await Permission.notification.request();
@@ -38,99 +41,6 @@ class DownloadHelper {
       }
     }
     return true;
-  }
-
-  /// Menampilkan dialog edukasi izin penyimpanan kepada pengguna sebelum pengunduhan
-  static Future<void> showDownloadConfirmationDialog(
-    BuildContext context, {
-    required String fileName,
-    required String fileTypeDesc,
-    required VoidCallback onConfirm,
-  }) async {
-    return showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.file_download_outlined, color: blueNormal, size: 26),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Izin Penyimpanan Unduhan',
-                style: pjsBold16,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Aplikasi MBOIStats memerlukan izin untuk menyimpan berkas $fileTypeDesc ini ke folder Download perangkat Anda.',
-              style: pjsRegular14.copyWith(color: dark2),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.insert_drive_file_outlined, size: 20, color: blueNormal),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      fileName,
-                      style: pjsSemiBold12.copyWith(color: dark1),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Apakah Anda ingin melanjutkan pengunduhan?',
-              style: pjsMedium14.copyWith(color: dark1),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              'Batal',
-              style: pjsMedium14.copyWith(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: blueNormal,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              onConfirm();
-            },
-            child: const Text(
-              'Izinkan & Unduh',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Membersihkan nama berkas dari karakter ilegal dan memaksakan ekstensi target
@@ -180,182 +90,298 @@ class DownloadHelper {
     }
   }
 
-  /// Mengunduh dokumen publikasi atau BRS secara pasti berformat .pdf
+  /// Mengunduh dokumen publikasi atau BRS secara pasti berformat .pdf (lintas platform iOS & Android)
   static Future<void> downloadDocument(
     BuildContext context, {
     required String url,
     required String fileName,
+    String? contentId,
     String? coverUrl,
     String? sectorCategory,
-    bool showConfirmation = true,
+    String? contentType,
+    bool showConfirmation = false,
   }) async {
-    if (url.isEmpty) {
-      Fluttertoast.showToast(
-        msg: 'Tautan dokumen tidak tersedia.',
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-      return;
-    }
+    final lower = fileName.toLowerCase();
+    final isBrsTitle = lower.contains('berita resmi') ||
+        lower.contains('brs') ||
+        lower.contains('inflasi') ||
+        lower.contains('perkembangan') ||
+        lower.contains('luas panen') ||
+        lower.contains('pariwisata') ||
+        lower.contains('ekspor') ||
+        lower.contains('impor');
 
-    void executeDownload() async {
-      final hasPermission = await checkAndRequestPermissions();
-      if (!hasPermission) {
-        Fluttertoast.showToast(
-          msg: 'Izin penyimpanan ditolak. Tidak dapat mengunduh berkas.',
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-        return;
-      }
+    final resolvedContentType = contentType ?? (isBrsTitle ? 'brs' : 'publikasi');
 
-      final safeName = sanitizeFileName(fileName, '.pdf');
-
-      Fluttertoast.showToast(
-        msg: 'Memulai pengunduhan dokumen PDF...',
-        backgroundColor: blueNormal,
-        textColor: Colors.white,
-      );
-
-      try {
-        await FileDownloader.downloadFile(
-          url: url,
-          name: safeName,
-          downloadDestination: DownloadDestinations.publicDownloads,
-          onDownloadCompleted: (String path) {
-            _autoRenameIfPhp(path, '.pdf');
-
-            // Catat log aktivitas ke Supabase
-            LoggerService.logActivity(
-              actionType: 'download_file',
-              sectorCategory: sectorCategory ?? LoggerService.classifySector(fileName),
-              itemName: fileName,
-              coverUrl: coverUrl,
-              contentUrl: url,
-            );
-
-            Fluttertoast.showToast(
-              msg: 'Dokumen PDF "$safeName" berhasil disimpan di folder Download.',
-              toastLength: Toast.LENGTH_LONG,
-              backgroundColor: blueNormal,
-              textColor: Colors.white,
-            );
-          },
-          onDownloadError: (String error) {
-            Fluttertoast.showToast(
-              msg: 'Gagal mengunduh dokumen: $error',
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
-            );
-          },
-        );
-      } catch (e) {
-        Fluttertoast.showToast(
-          msg: 'Terjadi kesalahan saat mengunduh: $e',
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-      }
-    }
-
-    if (showConfirmation) {
-      await showDownloadConfirmationDialog(
-        context,
-        fileName: fileName,
-        fileTypeDesc: 'dokumen PDF',
-        onConfirm: executeDownload,
-      );
-    } else {
-      executeDownload();
-    }
+    await _executeDownload(
+      context: context,
+      url: url,
+      fileName: fileName,
+      targetExtension: '.pdf',
+      fileTypeDesc: 'dokumen PDF',
+      contentType: resolvedContentType,
+      contentId: contentId,
+      coverUrl: coverUrl,
+      sectorCategory: sectorCategory,
+    );
   }
 
-  /// Mengunduh infografis secara pasti berformat .jpeg
+  /// Mengunduh infografis secara pasti berformat .jpeg (lintas platform iOS & Android)
   static Future<void> downloadInfografis(
     BuildContext context, {
     required String url,
     required String fileName,
+    String? contentId,
     String? coverUrl,
-    bool showConfirmation = true,
+    bool showConfirmation = false,
+  }) async {
+    await _executeDownload(
+      context: context,
+      url: url,
+      fileName: fileName,
+      targetExtension: '.jpeg',
+      fileTypeDesc: 'gambar Infografis (JPEG)',
+      contentType: 'infografis',
+      contentId: contentId,
+      coverUrl: coverUrl ?? url,
+      sectorCategory: 'infografis',
+    );
+  }
+
+  /// Mesin pengunduh terpadu lintas platform (iOS & Android)
+  static Future<void> _executeDownload({
+    required BuildContext context,
+    required String url,
+    required String fileName,
+    required String targetExtension,
+    required String fileTypeDesc,
+    required String contentType,
+    String? contentId,
+    String? coverUrl,
+    String? sectorCategory,
   }) async {
     if (url.isEmpty) {
       Fluttertoast.showToast(
-        msg: 'Tautan gambar infografis tidak tersedia.',
+        msg: 'Tautan berkas tidak tersedia.',
         backgroundColor: Colors.red,
         textColor: Colors.white,
       );
       return;
     }
 
-    void executeDownload() async {
-      final hasPermission = await checkAndRequestPermissions();
-      if (!hasPermission) {
-        Fluttertoast.showToast(
-          msg: 'Izin penyimpanan ditolak. Tidak dapat mengunduh infografis.',
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-        return;
-      }
-
-      final safeName = sanitizeFileName(fileName, '.jpeg');
-
+    final hasPermission = await checkAndRequestPermissions();
+    if (!hasPermission) {
       Fluttertoast.showToast(
-        msg: 'Memulai pengunduhan infografis JPEG...',
-        backgroundColor: blueNormal,
+        msg: 'Izin penyimpanan ditolak. Tidak dapat mengunduh berkas.',
+        backgroundColor: Colors.red,
         textColor: Colors.white,
       );
-
-      try {
-        await FileDownloader.downloadFile(
-          url: url,
-          name: safeName,
-          downloadDestination: DownloadDestinations.publicDownloads,
-          onDownloadCompleted: (String path) {
-            _autoRenameIfPhp(path, '.jpeg');
-
-            // Catat log aktivitas ke Supabase
-            LoggerService.logActivity(
-              actionType: 'download_file',
-              sectorCategory: 'infografis',
-              itemName: fileName,
-              coverUrl: coverUrl ?? url,
-              contentUrl: url,
-            );
-
-            Fluttertoast.showToast(
-              msg: 'Infografis "$safeName" berhasil disimpan di folder Download.',
-              toastLength: Toast.LENGTH_LONG,
-              backgroundColor: blueNormal,
-              textColor: Colors.white,
-            );
-          },
-          onDownloadError: (String error) {
-            Fluttertoast.showToast(
-              msg: 'Gagal mengunduh infografis: $error',
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
-            );
-          },
-        );
-      } catch (e) {
-        Fluttertoast.showToast(
-          msg: 'Terjadi kesalahan saat mengunduh: $e',
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-      }
+      return;
     }
 
-    if (showConfirmation) {
-      await showDownloadConfirmationDialog(
-        context,
+    final safeName = sanitizeFileName(fileName, targetExtension);
+
+    // 1. Catat log aktivitas unduhan ke Supabase secara instan agar langsung termonitor di Dashboard
+    final downloadAction = (contentType == 'brs')
+        ? 'download_brs'
+        : (contentType == 'publikasi'
+            ? 'download_publikasi'
+            : (contentType == 'infografis'
+                ? 'download_infografis'
+                : 'download_file'));
+
+    LoggerService.logActivity(
+      actionType: downloadAction,
+      sectorCategory: sectorCategory ?? LoggerService.classifySector(fileName),
+      itemName: fileName,
+      contentType: contentType,
+      contentId: contentId,
+      coverUrl: coverUrl,
+      contentUrl: url,
+    );
+
+    Fluttertoast.showToast(
+      msg: 'Memulai pengunduhan $fileTypeDesc...',
+      backgroundColor: blueNormal,
+      textColor: Colors.white,
+    );
+
+    if (Platform.isIOS) {
+      await _downloadOnIos(
+        url: url,
+        safeName: safeName,
         fileName: fileName,
-        fileTypeDesc: 'gambar Infografis (JPEG)',
-        onConfirm: executeDownload,
       );
     } else {
-      executeDownload();
+      await _downloadOnAndroid(
+        url: url,
+        safeName: safeName,
+        fileName: fileName,
+        targetExtension: targetExtension,
+      );
+    }
+  }
+
+  /// Logika download khusus iOS: simpan ke Dokumen Aplikasi (tersedia di app Files) & buka via Quick Look
+  static Future<void> _downloadOnIos({
+    required String url,
+    required String safeName,
+    required String fileName,
+  }) async {
+    HttpClient? client;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final filePath = '${dir.path}/$safeName';
+      final file = File(filePath);
+
+      // 1. Periksa apakah berkas sudah pernah di-cache oleh viewer (GlobalPDFViewer)
+      final cachedFile = File('${dir.path}/pdf_cache_${url.hashCode}.pdf');
+      if (await cachedFile.exists() && (await cachedFile.length()) > 0) {
+        await cachedFile.copy(filePath);
+      } else {
+        // 2. Unduh menggunakan HttpClient dengan streaming langsung ke berkas (tanpa buffer RAM & tanpa timeout paksa)
+        client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 30);
+
+        final request = await client.getUrl(Uri.parse(url));
+        request.headers.set(
+          HttpHeaders.userAgentHeader,
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        );
+        request.headers.set(HttpHeaders.acceptHeader, '*/*');
+
+        final response = await request.close();
+        if (response.statusCode == 200) {
+          final sink = file.openWrite();
+          await response.pipe(sink);
+          await sink.flush();
+          await sink.close();
+        } else {
+          throw Exception('Server BPS mengembalikan HTTP ${response.statusCode}');
+        }
+      }
+
+      if (await file.exists() && (await file.length()) > 0) {
+        Fluttertoast.showToast(
+          msg: 'Berkas "$safeName" berhasil diunduh.',
+          toastLength: Toast.LENGTH_LONG,
+          backgroundColor: blueNormal,
+          textColor: Colors.white,
+        );
+
+        // Buka dokumen via native iOS preview (Quick Look dengan tombol Simpan ke File / Bagikan)
+        await OpenFile.open(filePath);
+      } else {
+        throw Exception('Ukuran berkas 0 byte.');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Gagal mengunduh berkas di iOS: $e',
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    } finally {
+      client?.close();
+    }
+  }
+
+  /// Logika download Android: gunakan FileDownloader dengan fallback HTTP streaming
+  static Future<void> _downloadOnAndroid({
+    required String url,
+    required String safeName,
+    required String fileName,
+    required String targetExtension,
+  }) async {
+    try {
+      await FileDownloader.downloadFile(
+        url: url,
+        name: safeName,
+        downloadDestination: DownloadDestinations.publicDownloads,
+        onDownloadCompleted: (String path) {
+          _autoRenameIfPhp(path, targetExtension);
+
+          Fluttertoast.showToast(
+            msg: 'Berkas "$safeName" berhasil disimpan di folder Download.',
+            toastLength: Toast.LENGTH_LONG,
+            backgroundColor: blueNormal,
+            textColor: Colors.white,
+          );
+        },
+        onDownloadError: (String error) async {
+          // Fallback jika DownloadManager terhambat
+          await _fallbackHttpDownloadAndroid(
+            url: url,
+            safeName: safeName,
+            fileName: fileName,
+            targetExtension: targetExtension,
+          );
+        },
+      );
+    } catch (e) {
+      await _fallbackHttpDownloadAndroid(
+        url: url,
+        safeName: safeName,
+        fileName: fileName,
+        targetExtension: targetExtension,
+      );
+    }
+  }
+
+  /// Fallback HTTP streaming download untuk Android jika plugin FileDownloader terhambat
+  static Future<void> _fallbackHttpDownloadAndroid({
+    required String url,
+    required String safeName,
+    required String fileName,
+    required String targetExtension,
+  }) async {
+    HttpClient? client;
+    try {
+      Directory? downloadDir;
+      final publicDownload = Directory('/storage/emulated/0/Download');
+      if (await publicDownload.exists()) {
+        downloadDir = publicDownload;
+      } else {
+        downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+      }
+
+      final filePath = '${downloadDir.path}/$safeName';
+      final file = File(filePath);
+
+      client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 30);
+
+      final request = await client.getUrl(Uri.parse(url));
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      );
+      request.headers.set(HttpHeaders.acceptHeader, '*/*');
+
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final sink = file.openWrite();
+        await response.pipe(sink);
+        await sink.flush();
+        await sink.close();
+        _autoRenameIfPhp(filePath, targetExtension);
+
+        Fluttertoast.showToast(
+          msg: 'Berkas "$safeName" berhasil disimpan.',
+          toastLength: Toast.LENGTH_LONG,
+          backgroundColor: blueNormal,
+          textColor: Colors.white,
+        );
+      } else {
+        throw Exception('Server BPS mengembalikan HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'Gagal mengunduh berkas: $e',
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    } finally {
+      client?.close();
     }
   }
 }

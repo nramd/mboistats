@@ -225,7 +225,7 @@ class _PublikasiPageState extends State<PublikasiPage> {
                     Navigator.pop(context);
                     String fileName = dataPublikasi[index]["title"];
                     LoggerService.logActivity(
-                      actionType: 'view_pdf',
+                      actionType: 'view_publikasi_pdf',
                       contentType: 'publikasi',
                       sectorCategory: LoggerService.classifySector(fileName),
                       itemName: fileName,
@@ -253,8 +253,7 @@ class _PublikasiPageState extends State<PublikasiPage> {
       url: pdfUrl,
       fileName: fileName,
       coverUrl: coverUrl,
-      sectorCategory: 'publikasi',
-      showConfirmation: true,
+      sectorCategory: LoggerService.classifySector(fileName),
     );
   }
 

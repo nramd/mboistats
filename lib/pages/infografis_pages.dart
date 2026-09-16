@@ -141,7 +141,6 @@ class _InfografisPagesState extends State<InfografisPages> {
       url: pdfUrl,
       fileName: fileName,
       coverUrl: pdfUrl,
-      showConfirmation: true,
     );
   }
 

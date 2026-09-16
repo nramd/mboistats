@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:fluttertoast/fluttertoast.dart';
@@ -16,11 +15,15 @@ import 'package:mboistats/utils/download_helper.dart';
 class GlobalPDFViewer extends StatefulWidget {
   final String pdfUrl;
   final String title;
+  final String? contentType;
+  final String? contentId;
 
   const GlobalPDFViewer({
     Key? key,
     required this.pdfUrl,
     this.title = 'Dokumen Statistik',
+    this.contentType,
+    this.contentId,
   }) : super(key: key);
 
   @override
@@ -98,51 +101,14 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
     });
 
     try {
-      if (Platform.isIOS) {
-        Fluttertoast.showToast(
-          msg: "Menyiapkan berkas unduhan...",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.CENTER,
-          backgroundColor: blueNormal,
-          textColor: Colors.white,
-        );
-
-        final safeName = DownloadHelper.sanitizeFileName(widget.title, '.pdf');
-        final response = await http.get(Uri.parse(widget.pdfUrl));
-        if (response.statusCode == 200) {
-          final dir = await getTemporaryDirectory();
-          final filePath = '${dir.path}/$safeName';
-          final file = File(filePath);
-          await file.writeAsBytes(response.bodyBytes);
-
-          LoggerService.logActivity(
-            actionType: 'download_file',
-            sectorCategory: LoggerService.classifySector(widget.title),
-            itemName: widget.title,
-            contentUrl: widget.pdfUrl,
-          );
-
-          Fluttertoast.showToast(
-            msg: "Unduhan selesai.",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.CENTER,
-            backgroundColor: blueNormal,
-            textColor: Colors.white,
-          );
-
-          await OpenFile.open(filePath);
-        } else {
-          throw Exception("Gagal mengunduh berkas dari server.");
-        }
-      } else {
-        await DownloadHelper.downloadDocument(
-          context,
-          url: widget.pdfUrl,
-          fileName: widget.title,
-          sectorCategory: LoggerService.classifySector(widget.title),
-          showConfirmation: true,
-        );
-      }
+      await DownloadHelper.downloadDocument(
+        context,
+        url: widget.pdfUrl,
+        fileName: widget.title,
+        contentType: widget.contentType,
+        contentId: widget.contentId,
+        sectorCategory: LoggerService.classifySector(widget.title),
+      );
     } catch (e) {
       Fluttertoast.showToast(
         msg: "Terjadi kesalahan: $e",

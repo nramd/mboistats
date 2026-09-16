@@ -702,6 +702,7 @@ class _DataPageState extends State<DataPage> {
                     context: context,
                     title: title,
                     pdfUrl: pdfUrl,
+                    contentId: item['id']?.toString(),
                     contentType: 'brs',
                     coverUrl: thumbnail,
                     abstractText: item['abstract'] ?? item['ringkasan'],
@@ -801,6 +802,8 @@ class _DataPageState extends State<DataPage> {
                 if (displayUrl.isNotEmpty) {
                   LoggerService.logActivity(
                     actionType: 'download_file',
+                    contentType: 'infografis',
+                    contentId: item['id']?.toString(),
                     sectorCategory: LoggerService.classifySector(title),
                     itemName: title,
                     coverUrl: displayUrl,
@@ -901,6 +904,8 @@ class _DataPageState extends State<DataPage> {
                     context: context,
                     title: title,
                     pdfUrl: pdfUrl,
+                    contentId: item['id']?.toString(),
+                    contentType: 'publikasi',
                     coverUrl: thumbnail,
                     abstractText: item['abstract'] ?? item['ringkasan'],
                     releaseDate: item['rl_date'] ?? item['created_at']?.toString().split('T')[0],
@@ -1080,6 +1085,7 @@ class _DataPageState extends State<DataPage> {
     required BuildContext context,
     required String title,
     required String pdfUrl,
+    String? contentId,
     String? contentType,
     String? coverUrl,
     String? abstractText,
@@ -1138,17 +1144,18 @@ class _DataPageState extends State<DataPage> {
                 TextButton(
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await _downloadAndOpenPdf(pdfUrl, title, coverUrl);
+                    await _downloadAndOpenPdf(pdfUrl, title, contentId, coverUrl, contentType);
                   },
                   child: const Text("Unduh"),
                 ),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    final resolvedType = contentType ?? (title.toLowerCase().contains('berita resmi') ? 'brs' : 'publikasi');
+                    final resolvedType = contentType ?? ((title.toLowerCase().contains('berita resmi') || title.toLowerCase().contains('brs')) ? 'brs' : 'publikasi');
                     LoggerService.logActivity(
-                      actionType: 'view_pdf',
+                      actionType: resolvedType == 'brs' ? 'view_brs_pdf' : 'view_publikasi_pdf',
                       contentType: resolvedType,
+                      contentId: contentId,
                       sectorCategory: LoggerService.classifySector(title),
                       itemName: title,
                       coverUrl: coverUrl,
@@ -1157,7 +1164,12 @@ class _DataPageState extends State<DataPage> {
                     Navigator.pushNamed(
                       context,
                       '/pdf_viewer',
-                      arguments: {'pdfUrl': pdfUrl, 'title': title},
+                      arguments: {
+                        'pdfUrl': pdfUrl,
+                        'title': title,
+                        'contentType': resolvedType,
+                        'contentId': contentId,
+                      },
                     );
                   },
                   child: const Text("Buka PDF"),
@@ -1170,15 +1182,16 @@ class _DataPageState extends State<DataPage> {
     );
   }
 
-  Future<void> _downloadAndOpenPdf(String pdfUrl, String fileName, String? coverUrl) async {
+  Future<void> _downloadAndOpenPdf(String pdfUrl, String fileName, String? contentId, String? coverUrl, String? contentType) async {
     final cleanSector = LoggerService.classifySector(fileName);
     await DownloadHelper.downloadDocument(
       context,
       url: pdfUrl,
       fileName: fileName,
+      contentId: contentId,
       coverUrl: coverUrl,
+      contentType: contentType,
       sectorCategory: cleanSector,
-      showConfirmation: true,
     );
   }
 }

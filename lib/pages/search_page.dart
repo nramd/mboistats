@@ -204,12 +204,16 @@ class _SearchPageState extends State<SearchPage> {
     final sectorLabel = categories.isNotEmpty 
         ? categories[0].toUpperCase()
         : 'STATISTIK';
-    final actionType = item['action_type'] as String? ?? 'view_pdf';
+    final rawAction = item['action_type'] as String? ?? 'view_pdf';
     final contentType = item['content_type'] as String?;
+    final actionType = (rawAction == 'view_pdf')
+        ? (contentType == 'brs' ? 'view_brs_pdf' : (contentType == 'publikasi' ? 'view_publikasi_pdf' : 'view_pdf'))
+        : rawAction;
 
     LoggerService.logActivity(
       actionType: actionType,
       contentType: contentType,
+      contentId: item['id']?.toString(),
       sectorCategory: sectorLabel,
       itemName: title,
       coverUrl: item['cover_url'] as String? ?? '',
@@ -230,6 +234,8 @@ class _SearchPageState extends State<SearchPage> {
       Navigator.pushNamed(context, '/pdf_viewer', arguments: {
         'pdfUrl': contentUrl,
         'title': title,
+        'contentType': contentType,
+        'contentId': item['id']?.toString(),
       });
     }
   }

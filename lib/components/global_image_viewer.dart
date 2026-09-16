@@ -21,13 +21,23 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
   double _downloadProgress = 0.0;
 
   Future<void> _downloadImage() async {
-    await DownloadHelper.downloadInfografis(
-      context,
-      url: widget.imageUrl,
-      fileName: widget.title,
-      coverUrl: widget.imageUrl,
-      showConfirmation: true,
-    );
+    setState(() {
+      _isDownloading = true;
+    });
+    try {
+      await DownloadHelper.downloadInfografis(
+        context,
+        url: widget.imageUrl,
+        fileName: widget.title,
+        coverUrl: widget.imageUrl,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+        });
+      }
+    }
   }
 
   @override

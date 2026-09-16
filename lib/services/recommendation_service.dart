@@ -7,6 +7,7 @@ class RecommendedItem {
   final String route;
   final String icon;
   final String description;
+  final String? contentId;
   final String? coverUrl;
   final String? contentUrl;
 
@@ -15,6 +16,7 @@ class RecommendedItem {
     required this.route,
     required this.icon,
     required this.description,
+    this.contentId,
     this.coverUrl,
     this.contentUrl,
   });
@@ -486,6 +488,7 @@ class RecommendationService {
           route: _getRouteForSector(sector, cType),
           icon: _getIconForSector(sector),
           description: desc,
+          contentId: item['content_id'] as String?,
           coverUrl: coverUrl,
           contentUrl: contentUrl,
         );

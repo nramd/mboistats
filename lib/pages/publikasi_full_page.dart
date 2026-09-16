@@ -105,6 +105,7 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
         setState(() {
           if (list.isNotEmpty) {
             _dataPublikasi.addAll(list.map((item) => {
+              'id': item['id']?.toString(),
               'title': item['title'] ?? item['item_name'],
               'cover': item['cover_url'],
               'pdf': item['content_url'],
@@ -280,6 +281,7 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
                                     context: context,
                                     title: title,
                                     pdfUrl: pdfUrl,
+                                    contentId: item['id']?.toString(),
                                     coverUrl: coverUrl,
                                     abstractText: item['abstract'] ?? item['ringkasan'],
                                     releaseDate: item['rl_date'] ?? item['created_at']?.toString().split('T')[0],
@@ -349,6 +351,7 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
     required BuildContext context,
     required String title,
     required String pdfUrl,
+    String? contentId,
     String? coverUrl,
     String? abstractText,
     String? releaseDate,
@@ -406,7 +409,7 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
                 TextButton(
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await _downloadAndOpenPdf(pdfUrl, title, coverUrl);
+                    await _downloadAndOpenPdf(pdfUrl, title, contentId, coverUrl);
                   },
                   child: const Text("Unduh"),
                 ),
@@ -414,8 +417,9 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
                   onPressed: () {
                     Navigator.pop(ctx);
                     LoggerService.logActivity(
-                      actionType: 'view_pdf',
+                      actionType: 'view_publikasi_pdf',
                       contentType: 'publikasi',
+                      contentId: contentId,
                       sectorCategory: LoggerService.classifySector(title),
                       itemName: title,
                       coverUrl: coverUrl,
@@ -424,7 +428,12 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
                     Navigator.pushNamed(
                       context,
                       '/pdf_viewer',
-                      arguments: {'pdfUrl': pdfUrl, 'title': title},
+                      arguments: {
+                        'pdfUrl': pdfUrl,
+                        'title': title,
+                        'contentType': 'publikasi',
+                        'contentId': contentId,
+                      },
                     );
                   },
                   child: const Text("Buka PDF"),
@@ -437,15 +446,15 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
     );
   }
 
-  Future<void> _downloadAndOpenPdf(String pdfUrl, String fileName, String? coverUrl) async {
+  Future<void> _downloadAndOpenPdf(String pdfUrl, String fileName, String? contentId, String? coverUrl) async {
     final cleanSector = LoggerService.classifySector(fileName);
     await DownloadHelper.downloadDocument(
       context,
       url: pdfUrl,
       fileName: fileName,
+      contentId: contentId,
       coverUrl: coverUrl,
       sectorCategory: cleanSector,
-      showConfirmation: true,
     );
   }
 }

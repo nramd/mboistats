@@ -1,43 +1,6 @@
--- ====================================================================
--- SUPABASE CRON JOB & PERIODIC AUTO-SYNC UNTUK DATA BPS KOTA MALANG
--- ====================================================================
-
--- 1. Pastikan ekstensi pg_cron dan pg_net aktif di Supabase Dashboard
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-CREATE EXTENSION IF NOT EXISTS pg_net;
-
--- 2. Fungsi SQL untuk memicu sinkronisasi berkala data BPS (Halaman 1) ke contents
-CREATE OR REPLACE FUNCTION sync_latest_bps_to_contents()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  -- Catat eksekusi job di log
-  RAISE NOTICE 'BPS Periodic Sync Triggered at %', NOW();
-  
-  -- Catatan: Sinkronisasi realtime otomatis dapat dipanggil via Supabase Edge Function 
-  -- atau webhook scheduled setiap hari pukul 05:00 WIB (22:00 UTC).
-END;
-$$;
-
--- 3. Jadwalkan Cron Job harian BPS (Setiap hari pukul 05.00 WIB = 22.00 UTC)
-SELECT cron.schedule(
-  'daily-sync-bps-contents-job',
-  '0 22 * * *',
-  $$SELECT sync_bps_contents();$$
-);
-
--- ====================================================================
--- 4. FUNGSI & JADWAL CRON YOUTUBE STREAMING SIARAN PERS
--- Target: Setiap tanggal 1-6 awal bulan, jam 12.00-17.00 WIB, setiap 3 menit.
--- Konversi UTC: WIB - 7 jam = Jam 05:00 s.d 10:59 UTC.
--- Cron expression: '*/3 5-10 1-6 * *'
--- ====================================================================
-
 CREATE OR REPLACE FUNCTION public.sync_youtube_streams(force_run boolean DEFAULT false)
-RETURNS void
-LANGUAGE plpgsql
+ RETURNS void
+ LANGUAGE plpgsql
 AS $function$
 DECLARE
   api_key TEXT := 'AIzaSyCHs4xGRIvAZOQ6WiNfLFyq4WgRCF4RjXI';
@@ -49,7 +12,7 @@ DECLARE
   current_day INT := EXTRACT(DAY FROM NOW() AT TIME ZONE 'Asia/Jakarta');
   current_hour INT := EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Asia/Jakarta');
 BEGIN
-  -- Guard Internal: Jika bukan eksekusi paksa (force_run), hanya jalan tanggal 1-6, jam 12:00-17:00 WIB
+  -- Guard Internal: Jika bukan eksekusi paksa (force_run), hanya jalan tanggal 1-6 pada jam 12:00 s/d 17:59 WIB
   IF NOT force_run THEN
     IF current_day < 1 OR current_day > 6 OR current_hour < 12 OR current_hour > 17 THEN
       RETURN;
@@ -119,13 +82,4 @@ BEGIN
     END LOOP;
   END IF;
 END;
-$function$;
-
--- Update Jadwal Cron Job di pg_cron
-SELECT cron.unschedule('sync-youtube-streams');
-
-SELECT cron.schedule(
-  'sync-youtube-streams',
-  '*/3 5-10 1-6 * *',
-  $$SELECT sync_youtube_streams()$$
-);
+$function$

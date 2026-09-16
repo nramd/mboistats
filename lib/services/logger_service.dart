@@ -95,14 +95,17 @@ class LoggerService {
     final item = itemName.toLowerCase();
     final sector = sectorCategory.toLowerCase();
 
-    if (act == 'view_brs_pdf' || (act == 'view_pdf' && item.contains('berita resmi'))) {
+    if (act == 'view_brs_pdf' || act == 'download_brs' || ((act == 'view_pdf' || act == 'download_file') && (item.contains('berita resmi') || item.contains('brs')))) {
       return 'brs';
     }
-    if (act == 'view_publikasi_pdf' || (act == 'view_pdf' && !item.contains('berita resmi'))) {
+    if (act == 'view_publikasi_pdf' || act == 'download_publikasi' || (act == 'view_pdf' && !item.contains('berita resmi'))) {
       return 'publikasi';
     }
-    if (act == 'download_file') {
+    if (act == 'download_infografis' || (act == 'download_file' && item.contains('infografis'))) {
       return 'infografis';
+    }
+    if (act == 'download_file') {
+      return 'publikasi';
     }
     if (act == 'view_page') {
       const systemItems = {
@@ -130,6 +133,7 @@ class LoggerService {
     required String itemName,
     required String actionType,
     String? contentType,
+    String? contentId,
     String? userId,
     String? coverUrl,
     String? contentUrl,
@@ -148,7 +152,7 @@ class LoggerService {
     );
 
     // Selalu cetak log lokal untuk keperluan debugging pengembang
-    print('Activity Logged -> Platform: $platformName | Account: $accountIdentifier | Device: $deviceId | Sektor: $cleanSector | Type: $resolvedType | Item: $itemName | Aksi: $actionType | Cover: $coverUrl | Content: $contentUrl');
+    print('Activity Logged -> Platform: $platformName | Account: $accountIdentifier | Device: $deviceId | Sektor: $cleanSector | Type: $resolvedType | Item: $itemName | Aksi: $actionType | ContentId: $contentId | Cover: $coverUrl | Content: $contentUrl');
 
     const sectorToCategoryId = {
       'perekonomian': 1,
@@ -160,21 +164,26 @@ class LoggerService {
       'kesejahteraan': 7,
     };
     final catId = sectorToCategoryId[cleanSector.toLowerCase()];
-    final moduleName = catId == null ? (cleanSector.isNotEmpty ? cleanSector.toLowerCase() : 'fitur') : 'fitur';
+    final moduleName = resolvedType;
 
     if (!_isInitialized) {
       return;
     }
 
-    // Eksekusi POST request secara non-blocking
-    Supabase.instance.client.from('activity_logs').insert({
+    final payload = <String, dynamic>{
       'action_type': actionType,
       'category_id': catId,
       'module_name': moduleName,
       'title': itemName,
       'platform': platformName,
       'user_id': activeUserId,
-    }).then((_) {
+    };
+    if (contentId != null && contentId.isNotEmpty) {
+      payload['contents_id_content'] = contentId;
+    }
+
+    // Eksekusi POST request secara non-blocking
+    Supabase.instance.client.from('activity_logs').insert(payload).then((_) {
       print('Activity successfully synced with Supabase.');
     }).catchError((error) {
       print('Failed to sync log to Supabase: $error');
