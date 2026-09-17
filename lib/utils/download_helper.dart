@@ -6,6 +6,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:html/parser.dart';
+import 'package:html_unescape/html_unescape.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 
@@ -36,7 +39,7 @@ class DownloadHelper {
           return storageStatus.isGranted;
         }
       } catch (e) {
-        print('Error checking permissions: $e');
+        debugPrint('Error checking permissions: $e');
         return true;
       }
     }
@@ -73,7 +76,7 @@ class DownloadHelper {
         final newPath = decodedPath.replaceAll(RegExp(r'\.php$', caseSensitive: false), ext);
         if (file.existsSync()) {
           file.renameSync(newPath);
-          print('Auto-rename sukses: $decodedPath -> $newPath');
+          debugPrint('Auto-rename sukses: $decodedPath -> $newPath');
           return;
         }
 
@@ -82,11 +85,11 @@ class DownloadHelper {
         final rawNewPath = path.replaceAll(RegExp(r'\.php$', caseSensitive: false), ext);
         if (rawFile.existsSync()) {
           rawFile.renameSync(rawNewPath);
-          print('Auto-rename sukses (raw): $path -> $rawNewPath');
+          debugPrint('Auto-rename sukses (raw): $path -> $rawNewPath');
         }
       }
     } catch (e) {
-      print('Auto-rename file error: $e');
+      debugPrint('Auto-rename file error: $e');
     }
   }
 
@@ -146,6 +149,21 @@ class DownloadHelper {
       coverUrl: coverUrl ?? url,
       sectorCategory: 'infografis',
     );
+  }
+
+  /// Wrapper kompatibilitas untuk kode lama yang memanggil downloadFile
+  static Future<void> downloadFile({
+    required BuildContext context,
+    required String fileUrl,
+    required String fileName,
+    required String fileTypeForToast,
+    required bool isPublikasi,
+  }) async {
+    if (isPublikasi) {
+      await downloadDocument(context, url: fileUrl, fileName: fileName);
+    } else {
+      await downloadInfografis(context, url: fileUrl, fileName: fileName);
+    }
   }
 
   /// Mesin pengunduh terpadu lintas platform (iOS & Android)
@@ -383,5 +401,268 @@ class DownloadHelper {
     } finally {
       client?.close();
     }
+  }
+
+  /// Membuka PDF di viewer internal
+  static void openPdfDirectly(BuildContext context, String pdfUrl) {
+    if (pdfUrl.isEmpty) {
+      Fluttertoast.showToast(msg: "URL PDF tidak valid.");
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _PDFViewer(pdfUrl: pdfUrl),
+      ),
+    );
+  }
+
+  /// Menampilkan dialog terpusat untuk item BRS & Publikasi (digunakan di Favorit & item list)
+  static void showPublikasiDialog({
+    required BuildContext context,
+    required String title,
+    required String postType, // 'brs' atau 'publikasi'
+    required String pdfUrl,
+    required String abstract,
+    required String size,
+    required String releaseDate,
+    required Function onToggleFavorite,
+    required bool isCurrentlyFavorited,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContextInner) {
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            return AlertDialog(
+              title: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: bold16.copyWith(color: dark1),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      parse(HtmlUnescape().convert(abstract)).body?.text ?? '',
+                      style: TextStyle(fontSize: 13, color: dark1),
+                      textAlign: TextAlign.justify,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Ukuran Berkas: ${size.replaceAll('.', ',')}",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    Text(
+                      "Tanggal Rilis: $releaseDate",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              actions: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContextInner),
+                          child: const Text("Tutup"),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(dialogContextInner);
+                            await downloadDocument(
+                              context,
+                              url: pdfUrl,
+                              fileName: title,
+                              contentType: postType,
+                            );
+                          },
+                          child: const Text("Unduh"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContextInner);
+                            openPdfDirectly(context, pdfUrl);
+                          },
+                          child: const Text("Buka PDF"),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () {
+                            onToggleFavorite();
+                            setDialogState(() {
+                              isCurrentlyFavorited = !isCurrentlyFavorited;
+                            });
+                          },
+                          icon: Icon(
+                            isCurrentlyFavorited ? Icons.favorite : Icons.favorite_border,
+                            color: isCurrentlyFavorited ? Colors.red : Colors.grey[600],
+                            size: 20,
+                          ),
+                          label: Text(
+                            isCurrentlyFavorited ? 'Favorit' : 'Favoritkan',
+                            style: TextStyle(
+                              color: isCurrentlyFavorited ? Colors.red : Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Menampilkan dialog terpusat untuk item Infografis (digunakan di Favorit & item list)
+  static void showInfografisDialog({
+    required BuildContext context,
+    required String title,
+    required String imageUrl,
+    required String releaseDate,
+    required Function onToggleFavorite,
+    required bool isCurrentlyFavorited,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContextInner) {
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            return AlertDialog(
+              title: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: bold16.copyWith(color: dark1),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const SizedBox(
+                          height: 150,
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.broken_image, size: 100, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Tanggal Rilis: $releaseDate",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              actions: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContextInner),
+                          child: const Text("Tutup"),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(dialogContextInner);
+                            await downloadInfografis(
+                              context,
+                              url: imageUrl,
+                              fileName: title,
+                            );
+                          },
+                          child: Row(
+                            children: const [
+                              Icon(Icons.download, size: 18),
+                              SizedBox(width: 4),
+                              Text("Unduh"),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () {
+                            onToggleFavorite();
+                            setDialogState(() {
+                              isCurrentlyFavorited = !isCurrentlyFavorited;
+                            });
+                          },
+                          icon: Icon(
+                            isCurrentlyFavorited ? Icons.favorite : Icons.favorite_border,
+                            color: isCurrentlyFavorited ? Colors.red : Colors.grey[600],
+                            size: 20,
+                          ),
+                          label: Text(
+                            isCurrentlyFavorited ? 'Favorit' : 'Favoritkan',
+                            style: TextStyle(
+                              color: isCurrentlyFavorited ? Colors.red : Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Widget private untuk menampung PDF Viewer
+class _PDFViewer extends StatelessWidget {
+  final String pdfUrl;
+  const _PDFViewer({Key? key, required this.pdfUrl}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('PDF Viewer'),
+        leading: IconButton(
+          icon: Image.asset('assets/icons/left-arrow.png', height: 25),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SfPdfViewer.network(
+        pdfUrl,
+        onDocumentLoadFailed: (details) {
+          debugPrint("PDF Load Failed: ${details.description}");
+          Fluttertoast.showToast(msg: "Gagal memuat PDF: ${details.description}");
+        },
+      ),
+    );
   }
 }

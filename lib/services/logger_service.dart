@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/config/supabase_config.dart';
@@ -14,7 +15,7 @@ class LoggerService {
     // Periksa apakah credentials sudah diisi
     if (SupabaseConfig.url == 'YOUR_SUPABASE_URL' || 
         SupabaseConfig.anonKey == 'YOUR_SUPABASE_ANON_KEY') {
-      print('Warning: Supabase credentials are not set. Logging to Supabase will be bypassed (simulation only).');
+      debugPrint('Warning: Supabase credentials are not set. Logging to Supabase will be bypassed (simulation only).');
       return;
     }
 
@@ -24,9 +25,9 @@ class LoggerService {
         anonKey: SupabaseConfig.anonKey,
       );
       _isInitialized = true;
-      print('Supabase logger service initialized successfully.');
+      debugPrint('Supabase logger service initialized successfully.');
     } catch (e) {
-      print('Error initializing Supabase: $e');
+      debugPrint('Error initializing Supabase: $e');
     }
   }
 
@@ -152,7 +153,7 @@ class LoggerService {
     );
 
     // Selalu cetak log lokal untuk keperluan debugging pengembang
-    print('Activity Logged -> Platform: $platformName | Account: $accountIdentifier | Device: $deviceId | Sektor: $cleanSector | Type: $resolvedType | Item: $itemName | Aksi: $actionType | ContentId: $contentId | Cover: $coverUrl | Content: $contentUrl');
+    debugPrint('Activity Logged -> Platform: $platformName | Account: $accountIdentifier | Sektor: $cleanSector | Type: $resolvedType | Item: $itemName | Aksi: $actionType');
 
     const sectorToCategoryId = {
       'perekonomian': 1,
@@ -184,9 +185,9 @@ class LoggerService {
 
     // Eksekusi POST request secara non-blocking
     Supabase.instance.client.from('activity_logs').insert(payload).then((_) {
-      print('Activity successfully synced with Supabase.');
+      debugPrint('Activity successfully synced with Supabase.');
     }).catchError((error) {
-      print('Failed to sync log to Supabase: $error');
+      debugPrint('Failed to sync log to Supabase: $error');
     });
   }
 

@@ -126,7 +126,7 @@ class _BeritaPageState extends State<BeritaPages> {
       }
       return;
     } catch (e) {
-      print("Error fetching BRS from Supabase: $e");
+      debugPrint("Error fetching BRS from Supabase: $e");
     }
 
     // Fallback to BPS API if Supabase fails

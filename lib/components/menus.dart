@@ -58,7 +58,7 @@ class _MenusState extends State<Menus> {
         });
       }
     } catch (e) {
-      print('Error loading dynamic category order: $e');
+      debugPrint('Error loading dynamic category order: $e');
     }
   }
 

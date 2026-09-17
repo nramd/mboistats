@@ -1,6 +1,4 @@
-//import 'dart:js';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:mboistats/components/global_pdf_viewer.dart';
 import 'package:mboistats/components/global_image_viewer.dart';
 import 'package:mboistats/pages/brs_pages.dart';

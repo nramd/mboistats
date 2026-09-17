@@ -81,7 +81,7 @@ class AuthService {
             CustomerApiService.setCachedUserName(initialName);
           }
         } catch (e) {
-          print('Error syncing profile name on login: $e');
+          debugPrint('Error syncing profile name on login: $e');
         }
       }
 
@@ -101,7 +101,7 @@ class AuthService {
       );
       throw 'Otentikasi Supabase gagal: ${e.message}';
     } catch (e) {
-      print('Native Google Sign-In failed or canceled ($e). Attempting Supabase OAuth fallback...');
+      debugPrint('Native Google Sign-In failed or canceled ($e). Attempting Supabase OAuth fallback...');
       return await _signInWithOAuthFallback();
     }
   }

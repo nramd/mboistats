@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mboistats/models/youtube_video.dart';
 
 /// Service untuk membaca data YouTube dari tabel Supabase `youtube_streams`.
 /// Tidak ada panggilan langsung ke YouTube API dari Flutter.
@@ -19,7 +21,7 @@ class YouTubeService {
           .maybeSingle();
       return response;
     } catch (e) {
-      print('Error fetching live stream: $e');
+      debugPrint('Error fetching live stream: $e');
       return null;
     }
   }
@@ -64,7 +66,7 @@ class YouTubeService {
 
       return results;
     } catch (e) {
-      print('Error fetching archived streams: $e');
+      debugPrint('Error fetching archived streams: $e');
       return [];
     }
   }
@@ -81,7 +83,7 @@ class YouTubeService {
 
       return response.map((e) => Map<String, dynamic>.from(e)).toList();
     } catch (e) {
-      print('Error fetching recent streams: $e');
+      debugPrint('Error fetching recent streams: $e');
       return [];
     }
   }
@@ -105,8 +107,61 @@ class YouTubeService {
       }
       return years.toList()..sort((a, b) => b.compareTo(a));
     } catch (e) {
-      print('Error fetching available years: $e');
+      debugPrint('Error fetching available years: $e');
       return [DateTime.now().year];
     }
   }
+
+  /// Mengambil daftar video dengan paginasi dan filter tanggal untuk YoutubeListPage
+  Future<YoutubeVideoResult> getVideos({
+    int page = 1,
+    int limit = 10,
+    DateTime? publishedAfter,
+    DateTime? publishedBefore,
+  }) async {
+    try {
+      final List<dynamic> response = await _client
+          .from('youtube_streams')
+          .select()
+          .order('published_at', ascending: false);
+
+      var list = response
+          .map((e) => YoutubeVideo.fromSupabase(Map<String, dynamic>.from(e)))
+          .toList();
+
+      if (publishedAfter != null) {
+        list = list.where((v) {
+          final dt = DateTime.tryParse(v.publishedAt);
+          return dt != null && dt.isAfter(publishedAfter);
+        }).toList();
+      }
+      if (publishedBefore != null) {
+        list = list.where((v) {
+          final dt = DateTime.tryParse(v.publishedAt);
+          return dt != null && dt.isBefore(publishedBefore);
+        }).toList();
+      }
+
+      final totalResults = list.length;
+      final totalPages = (totalResults / limit).ceil().clamp(1, 999);
+      final startIndex = (page - 1) * limit;
+      final pagedVideos = list.skip(startIndex).take(limit).toList();
+
+      return YoutubeVideoResult(
+        videos: pagedVideos,
+        currentPage: page,
+        totalPages: totalPages,
+        totalResults: totalResults,
+      );
+    } catch (e) {
+      debugPrint('Error in getVideos: $e');
+      return YoutubeVideoResult(
+        videos: [],
+        currentPage: 1,
+        totalPages: 1,
+        totalResults: 0,
+      );
+    }
+  }
 }
+class YoutubeService extends YouTubeService {}

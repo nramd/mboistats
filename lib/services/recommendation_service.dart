@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/services/customer_api_service.dart';
@@ -45,7 +46,7 @@ class RecommendationService {
           .maybeSingle();
       return data != null;
     } catch (e) {
-      print("Error checking user profile: $e");
+      debugPrint("Error checking user profile: $e");
       return false;
     }
   }
@@ -64,7 +65,7 @@ class RecommendationService {
       }
       return null;
     } catch (e) {
-      print("Error fetching user major: $e");
+      debugPrint("Error fetching user major: $e");
       return null;
     }
   }
@@ -132,9 +133,9 @@ class RecommendationService {
         }
       }
 
-      print("User profile successfully saved to user_all: $major");
+      debugPrint("User profile successfully saved to user_all: $major");
     } catch (e) {
-      print("Error saving user profile: $e");
+      debugPrint("Error saving user profile: $e");
     }
   }
 
@@ -157,9 +158,9 @@ class RecommendationService {
         await _client.from('activity_logs').delete().eq('user_id', userId);
       }
 
-      print("User profile and activity logs successfully deleted from Supabase");
+      debugPrint("User profile and activity logs successfully deleted from Supabase");
     } catch (e) {
-      print("Error deleting user profile and logs: $e");
+      debugPrint("Error deleting user profile and logs: $e");
     }
   }
 
@@ -250,7 +251,7 @@ class RecommendationService {
         }
       }
     } catch (e) {
-      print("Info: Memakai fallback default mapping jurusan: $e");
+      debugPrint("Info: Memakai fallback default mapping jurusan: $e");
     }
     _cachedMajorSectorMapping = Map<String, List<String>>.from(defaultMajorSectorMapping);
     return _cachedMajorSectorMapping!;
@@ -309,7 +310,7 @@ class RecommendationService {
       }
       return result.isNotEmpty ? result : (_cachedRecommendations ?? []);
     } catch (e) {
-      print("Error fetching personalized recommendations: $e");
+      debugPrint("Error fetching personalized recommendations: $e");
       return _cachedRecommendations ?? [];
     }
   }
@@ -332,7 +333,7 @@ class RecommendationService {
       }
       return map.isNotEmpty ? map : (_cachedSectorScores ?? {});
     } catch (e) {
-      print("Error fetching sector scores: $e");
+      debugPrint("Error fetching sector scores: $e");
       return _cachedSectorScores ?? {};
     }
   }
@@ -494,7 +495,7 @@ class RecommendationService {
         );
       }).toList();
     } catch (e) {
-      print("Gagal mengurai getSectorRecommendations: $e");
+      debugPrint("Gagal mengurai getSectorRecommendations: $e");
       return [];
     }
   }
@@ -637,7 +638,7 @@ class RecommendationService {
       }
       return uniqueList;
     } catch (e) {
-      print("Error fetching recently viewed: $e");
+      debugPrint("Error fetching recently viewed: $e");
       return _cachedRecentlyViewed ?? [];
     }
   }

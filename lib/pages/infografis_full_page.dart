@@ -131,7 +131,7 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
       }
       return;
     } catch (e) {
-      print("Error fetching Infografis from Supabase: $e");
+      debugPrint("Error fetching Infografis from Supabase: $e");
     }
 
     // Fallback to BPS API

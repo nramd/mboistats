@@ -153,7 +153,7 @@ class _DataPageState extends State<DataPage> {
         });
       }
     } catch (e) {
-      print("Inline search error: $e");
+      debugPrint("Inline search error: $e");
       if (mounted) setState(() => _isSearching = false);
     }
   }

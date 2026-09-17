@@ -121,7 +121,7 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
       }
       return;
     } catch (e) {
-      print("Error fetching Publikasi from Supabase: $e");
+      debugPrint("Error fetching Publikasi from Supabase: $e");
     }
 
     // Fallback to BPS API

@@ -113,9 +113,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
           return name.split(' ').first;
         }
       }
-      return 'Pengguna';
+      return 'Sahabat Data';
     }
-    return 'Tamu';
+    return 'Sahabat Data';
   }
 
   String _getGreeting() {

@@ -67,7 +67,7 @@ class _ProfilPageState extends State<ProfilPage> {
       if (mounted) {
         setState(() {
           _userEmail = 'Masuk dengan Google untuk akses personal';
-          _userName = 'Mode Tamu';
+          _userName = 'Sahabat Data';
           _userAvatar = null;
           _userMajor = null;
         });
@@ -115,73 +115,13 @@ class _ProfilPageState extends State<ProfilPage> {
                 await GoogleSignIn.instance.signOut();
                 await Supabase.instance.client.auth.signOut();
               } catch (e) {
-                print("Logout error: $e");
+                debugPrint("Logout error: $e");
               }
               if (mounted) {
                 navigator.pushNamedAndRemoveUntil('/login', (route) => false);
               }
             },
             child: const Text('Logout', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteAccountDialog() {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Hapus Akun (Debug/Testing)', style: pjsBold18),
-        content: const Text(
-          'Apakah Anda yakin ingin menghapus akun? Data profil Anda akan dihapus dari Supabase.',
-          style: pjsRegular14,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Batal', style: pjsMedium14),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              LoggerService.logActivity(
-                actionType: 'delete_account',
-                sectorCategory: 'profil',
-                itemName: 'Hapus Akun',
-              );
-              try {
-                CustomerApiService.clearCache();
-                await GoogleSignIn.instance.initialize(
-                  serverClientId: AuthConfig.webClientId,
-                  clientId: AuthConfig.iosClientId,
-                );
-                await RecommendationService.deleteProfile();
-                await GoogleSignIn.instance.signOut();
-                await Supabase.instance.client.auth.signOut();
-              } catch (e) {
-                print("Delete account error: $e");
-              }
-              if (mounted) {
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Profil akun telah dibersihkan.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                navigator.pushNamedAndRemoveUntil('/login', (route) => false);
-              }
-            },
-            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -345,7 +285,7 @@ class _ProfilPageState extends State<ProfilPage> {
           ),
           const SizedBox(width: 20),
           const Text(
-            'Tamu',
+            'Sahabat Data',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontWeight: FontWeight.bold,
@@ -540,12 +480,6 @@ class _ProfilPageState extends State<ProfilPage> {
                       iconPath: 'assets_v2/icons/logout.png',
                       title: 'Logout',
                       onTap: _showLogoutDialog,
-                    ),
-                    _buildMenuCard(
-                      context: context,
-                      iconPath: 'assets_v2/icons/hapus_akun.png',
-                      title: 'Hapus Akun',
-                      onTap: _showDeleteAccountDialog,
                     ),
                   ],
                   const SizedBox(height: 20),

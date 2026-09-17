@@ -107,7 +107,7 @@ class _SearchPageState extends State<SearchPage> {
         });
       }
     } catch (e) {
-      print("Supabase search error: $e");
+      debugPrint("Supabase search error: $e");
       if (mounted) {
         setState(() {
           _rawResults = [];

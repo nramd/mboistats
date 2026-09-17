@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mboistats/route-manager.dart';
 // import 'package:connectivity/connectivity.dart';
@@ -17,6 +18,9 @@ final AppThemeNotifier appThemeNotifier = AppThemeNotifier();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
   await LoggerService.init();
 
   await Supabase.initialize(

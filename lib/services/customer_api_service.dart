@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:mboistats/config/api_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -140,7 +141,7 @@ class CustomerApiService {
       }
       return null;
     } catch (e) {
-      print("getCustomerFromSupabase Error: $e");
+      debugPrint("getCustomerFromSupabase Error: $e");
       return null;
     }
   }
@@ -168,7 +169,7 @@ class CustomerApiService {
       }
       return true;
     } catch (e) {
-      print("updateCustomerInSupabase Error: $e");
+      debugPrint("updateCustomerInSupabase Error: $e");
       return false;
     }
   }
