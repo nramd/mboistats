@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:http/http.dart' as http;
 import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/theme.dart';
 
@@ -22,6 +23,7 @@ class BpsNativeDataPage extends StatefulWidget {
 }
 
 class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
+  http.Client? _httpClient;
   BpsDataResult? _data;
   bool _isLoading = true;
   String? _errorMessage;
@@ -44,11 +46,22 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
     _fetchData();
   }
 
-  Future<void> _fetchData() async {
+  @override
+  void dispose() {
+    _httpClient?.close();
+    super.dispose();
+  }
+
+  Future<void> _fetchData({bool forceRefresh = false}) async {
+    _httpClient?.close();
+    _httpClient = http.Client();
+
     try {
       final result = await BpsApiService.fetchData(
         varId: widget.varId,
         maxYears: widget.maxYears,
+        client: _httpClient,
+        forceRefresh: forceRefresh,
       );
       if (mounted) {
         setState(() {
@@ -93,7 +106,7 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                       _isLoading = true;
                       _errorMessage = null;
                     });
-                    await _fetchData();
+                    await _fetchData(forceRefresh: true);
                   },
                   child: _buildContent(isDark),
                 ),
@@ -111,9 +124,17 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
             const SizedBox(height: 12),
             Text('Gagal memuat data BPS', style: pjsBold16),
             const SizedBox(height: 8),
-            Text(_errorMessage ?? '', style: pjsRegular14, textAlign: TextAlign.center),
+            Text(
+              _errorMessage ?? '',
+              style: pjsRegular14,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 16),
-            ElevatedButton(
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: blueNormal,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 setState(() {
                   _isLoading = true;
@@ -121,7 +142,8 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                 });
                 _fetchData();
               },
-              child: const Text('Coba Lagi'),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Coba Lagi'),
             ),
           ],
         ),
@@ -176,7 +198,8 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF7F6000).withValues(alpha: 0.3)),
+        border:
+            Border.all(color: const Color(0xFF7F6000).withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -192,7 +215,10 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
             const SizedBox(height: 4),
             Text(
               '(${data.unit})',
-              style: pjsRegular14.copyWith(color: const Color(0xFF7F6000), fontSize: 12),
+              style: pjsRegular14.copyWith(
+                color: const Color(0xFF7F6000),
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -200,7 +226,10 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
             const SizedBox(height: 4),
             Text(
               data.series.map((s) => s.label).join(', '),
-              style: pjsRegular14.copyWith(color: const Color(0xFF7F6000), fontSize: 11),
+              style: pjsRegular14.copyWith(
+                color: const Color(0xFF7F6000),
+                fontSize: 11,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -258,7 +287,7 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
           ),
           const SizedBox(height: 16),
 
-          // Native fl_chart
+          // Native fl_chart (duration: Duration.zero untuk rendering deterministik)
           SizedBox(
             height: 220,
             child: LineChart(
@@ -273,8 +302,12 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                   ),
                 ),
                 titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -290,7 +323,9 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white54 : const Color(0xFF7F6000),
+                                color: isDark
+                                    ? Colors.white54
+                                    : const Color(0xFF7F6000),
                               ),
                             ),
                           );
@@ -325,9 +360,10 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                         final seriesIdx = spot.barIndex;
                         final label = data.series[seriesIdx].label;
                         return LineTooltipItem(
-                          '$label\n${_formatValue(spot.y)} ${data.unit}',
+                          '$label\n${_formatValue(spot.y, decimal: data.decimal)} ${data.unit}',
                           TextStyle(
-                            color: _seriesColors[seriesIdx % _seriesColors.length],
+                            color:
+                                _seriesColors[seriesIdx % _seriesColors.length],
                             fontWeight: FontWeight.bold,
                             fontSize: 11,
                           ),
@@ -337,6 +373,7 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                   ),
                 ),
               ),
+              duration: Duration.zero,
             ),
           ),
         ],
@@ -374,9 +411,11 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
   }
 
   Widget _buildDataTableCard(BpsDataResult data, bool isDark, Color bgCard) {
-    final headerColor = const Color(0xFF7F6000);
-    final rowColor1 = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFDBCFAF);
-    final rowColor2 = isDark ? const Color(0xFF333333) : const Color(0xFFDBB958);
+    const headerColor = Color(0xFF7F6000);
+    final rowColor1 =
+        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFDBCFAF);
+    final rowColor2 =
+        isDark ? const Color(0xFF333333) : const Color(0xFFDBB958);
 
     return Container(
       decoration: BoxDecoration(
@@ -416,11 +455,16 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                       child: Text('TAHUN', textAlign: TextAlign.center),
                     ),
                   ),
-                  ...data.series.map((s) => DataColumn(
-                        label: Expanded(
-                          child: Text(s.label.toUpperCase(), textAlign: TextAlign.center),
+                  ...data.series.map(
+                    (s) => DataColumn(
+                      label: Expanded(
+                        child: Text(
+                          s.label.toUpperCase(),
+                          textAlign: TextAlign.center,
                         ),
-                      )),
+                      ),
+                    ),
+                  ),
                 ],
                 rows: List.generate(data.years.length, (rowIdx) {
                   final reverseIdx = data.years.length - 1 - rowIdx;
@@ -432,12 +476,16 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                       DataCell(Center(child: Text(data.years[reverseIdx]))),
                       ...data.series.map((s) {
                         final val = s.values[reverseIdx];
-                        return DataCell(Center(
-                          child: Text(
-                            val != null ? _formatValue(val) : '-',
-                            textAlign: TextAlign.center,
+                        return DataCell(
+                          Center(
+                            child: Text(
+                              val != null
+                                  ? _formatValue(val, decimal: data.decimal)
+                                  : '-',
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                        ));
+                        );
                       }),
                     ],
                   );
@@ -465,19 +513,18 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
     return maxVal / 5;
   }
 
-  String _formatValue(double val) {
-    if (val >= 1000000) {
-      return (val / 1000000).toStringAsFixed(2);
-    } else if (val >= 1000) {
-      return (val / 1000).toStringAsFixed(2);
-    }
-    return val.toStringAsFixed(2);
+  /// Menampilkan nilai pada sel tabel dan tooltip sesuai skala satuan asli
+  /// tanpa membagi nilai >= 1.000 atau >= 1.000.000 tanpa penanda skala.
+  String _formatValue(double val, {int decimal = 2}) {
+    final safeDecimal = (decimal >= 0 && decimal <= 4) ? decimal : 2;
+    return val.toStringAsFixed(safeDecimal);
   }
 
+  /// Pemformatan ringkas khusus label sumbu Y dengan penanda skala eksplisit ('k'/'M')
   String _formatAxisValue(double val) {
-    if (val >= 1000000) {
+    if (val.abs() >= 1000000) {
       return '${(val / 1000000).toStringAsFixed(1)}M';
-    } else if (val >= 1000) {
+    } else if (val.abs() >= 1000) {
       return '${(val / 1000).toStringAsFixed(0)}k';
     }
     return val.toStringAsFixed(1);

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -26,95 +25,94 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
 
   Future<void> fetchData() async {
     try {
-      final response = await http.get(Uri.parse(
-          'https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/key/9db89e91c3c142df678e65a78c4e547f'),);
+      final response = await http.get(
+        Uri.parse(
+            'https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/key/9db89e91c3c142df678e65a78c4e547f'),
+      );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final infographic =
-        (data['data'][1] as List).cast<Map<String, dynamic>>();
+            (data['data'][1] as List).cast<Map<String, dynamic>>();
         setState(() {
           dataInfografis = infographic;
         });
       } else {
         throw Exception('Gagal mendapatkan data.');
       }
-    } catch (error) {
-
-    }
+    } catch (error) {}
   }
 
   @override
   Widget build(BuildContext context) {
     return dataInfografis.isEmpty
         ? const Center(
-      child: CircularProgressIndicator(),
-    )
+            child: CircularProgressIndicator(),
+          )
         : Column(
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(
-            top: 24.0,
-            bottom: 16.0,
-          ),
-          child: Text(
-            'INFOGRAFIS',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        CarouselSlider(
-          options: CarouselOptions(
-            height: 450,
-            enlargeCenterPage: true,
-            autoPlay: true,
-            aspectRatio: 3 / 4,
-          ),
-          items: dataInfografis.map((item) {
-            return GestureDetector(
-              onTap: () {
-                openDownloadConfirmation(
-                  context,
-                  item['img'] ?? '',
-                  item['title'] ?? '',
-                  item['date'] ?? '',
-                );
-              },
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8.0),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      spreadRadius: 2,
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(
+                  top: 24.0,
+                  bottom: 16.0,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.network(
-                    item['img'],
-                    width: MediaQuery
-                        .of(context)
-                        .size
-                        .width,
-                    fit: BoxFit.cover,
+                child: Text(
+                  'INFOGRAFIS',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
+              CarouselSlider(
+                options: CarouselOptions(
+                  height: 450,
+                  enlargeCenterPage: true,
+                  autoPlay: true,
+                  aspectRatio: 3 / 4,
+                ),
+                items: dataInfografis.map((item) {
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/image_viewer',
+                        arguments: {
+                          'imageUrl': item['img'] ?? '',
+                          'title': item['title'] ?? 'Infografis',
+                        },
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            spreadRadius: 2,
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: Image.network(
+                          item['img'],
+                          width: MediaQuery.of(context).size.width,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
   }
 
-  void openDownloadConfirmation(BuildContext context, String tautan,
-      String judul, String tglrilis) {
+  void openDownloadConfirmation(
+      BuildContext context, String tautan, String judul, String tglrilis) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -135,15 +133,13 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
                         tautan,
                         fit: BoxFit.fill,
                         errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.image_not_supported),
+                            const Icon(Icons.image_not_supported),
                       ),
                       Text(
                         "Tanggal Rilis: $tglrilis",
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey
-                        ),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -172,14 +168,13 @@ class _CarouselInfografisState extends State<CarouselInfografis> {
               ],
             ),
           ],
-
         );
       },
     );
   }
 
-  Future<void> downloadAndShowConfirmation(BuildContext context, String imgUrl,
-      String fileName) async {
+  Future<void> downloadAndShowConfirmation(
+      BuildContext context, String imgUrl, String fileName) async {
     await DownloadHelper.downloadInfografis(
       context,
       url: imgUrl,

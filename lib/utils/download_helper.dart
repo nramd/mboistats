@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:html/parser.dart';
 import 'package:html_unescape/html_unescape.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:mboistats/components/global_pdf_viewer.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 
@@ -52,7 +52,8 @@ class DownloadHelper {
     String clean = originalName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
     // 2. Hapus ekstensi lama yang menempel jika ada (misal .php, .tmp, .pdf, .jpg, .jpeg, .png)
-    clean = clean.replaceAll(RegExp(r'\.(php|tmp|pdf|jpg|jpeg|png)$', caseSensitive: false), '');
+    clean = clean.replaceAll(
+        RegExp(r'\.(php|tmp|pdf|jpg|jpeg|png)$', caseSensitive: false), '');
 
     // 3. Trim spasi berlebih
     clean = clean.trim();
@@ -61,7 +62,8 @@ class DownloadHelper {
     }
 
     // 4. Pastikan ekstensi target diawali titik
-    final ext = targetExtension.startsWith('.') ? targetExtension : '.$targetExtension';
+    final ext =
+        targetExtension.startsWith('.') ? targetExtension : '.$targetExtension';
     return '$clean$ext';
   }
 
@@ -69,11 +71,15 @@ class DownloadHelper {
   static void _autoRenameIfPhp(String path, String targetExtension) {
     try {
       final decodedPath = Uri.decodeFull(path);
-      final ext = targetExtension.startsWith('.') ? targetExtension : '.$targetExtension';
+      final ext = targetExtension.startsWith('.')
+          ? targetExtension
+          : '.$targetExtension';
 
-      if (decodedPath.toLowerCase().endsWith('.php') || !decodedPath.toLowerCase().endsWith(ext.toLowerCase())) {
+      if (decodedPath.toLowerCase().endsWith('.php') ||
+          !decodedPath.toLowerCase().endsWith(ext.toLowerCase())) {
         final file = File(decodedPath);
-        final newPath = decodedPath.replaceAll(RegExp(r'\.php$', caseSensitive: false), ext);
+        final newPath = decodedPath.replaceAll(
+            RegExp(r'\.php$', caseSensitive: false), ext);
         if (file.existsSync()) {
           file.renameSync(newPath);
           debugPrint('Auto-rename sukses: $decodedPath -> $newPath');
@@ -82,7 +88,8 @@ class DownloadHelper {
 
         // Coba gunakan path mentah jika path ter-encode karakter khusus
         final rawFile = File(path);
-        final rawNewPath = path.replaceAll(RegExp(r'\.php$', caseSensitive: false), ext);
+        final rawNewPath =
+            path.replaceAll(RegExp(r'\.php$', caseSensitive: false), ext);
         if (rawFile.existsSync()) {
           rawFile.renameSync(rawNewPath);
           debugPrint('Auto-rename sukses (raw): $path -> $rawNewPath');
@@ -114,7 +121,8 @@ class DownloadHelper {
         lower.contains('ekspor') ||
         lower.contains('impor');
 
-    final resolvedContentType = contentType ?? (isBrsTitle ? 'brs' : 'publikasi');
+    final resolvedContentType =
+        contentType ?? (isBrsTitle ? 'brs' : 'publikasi');
 
     await _executeDownload(
       context: context,
@@ -275,7 +283,8 @@ class DownloadHelper {
           await sink.flush();
           await sink.close();
         } else {
-          throw Exception('Server BPS mengembalikan HTTP ${response.statusCode}');
+          throw Exception(
+              'Server BPS mengembalikan HTTP ${response.statusCode}');
         }
       }
 
@@ -359,7 +368,8 @@ class DownloadHelper {
       if (await publicDownload.exists()) {
         downloadDir = publicDownload;
       } else {
-        downloadDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+        downloadDir = await getExternalStorageDirectory() ??
+            await getApplicationDocumentsDirectory();
       }
 
       final filePath = '${downloadDir.path}/$safeName';
@@ -403,8 +413,14 @@ class DownloadHelper {
     }
   }
 
-  /// Membuka PDF di viewer internal
-  static void openPdfDirectly(BuildContext context, String pdfUrl) {
+  /// Membuka PDF di viewer utama terpadu (GlobalPDFViewer)
+  static void openPdfDirectly(
+    BuildContext context,
+    String pdfUrl, {
+    String title = 'Dokumen Statistik',
+    String? contentType,
+    String? contentId,
+  }) {
     if (pdfUrl.isEmpty) {
       Fluttertoast.showToast(msg: "URL PDF tidak valid.");
       return;
@@ -412,7 +428,12 @@ class DownloadHelper {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => _PDFViewer(pdfUrl: pdfUrl),
+        builder: (context) => GlobalPDFViewer(
+          pdfUrl: pdfUrl,
+          title: title,
+          contentType: contentType,
+          contentId: contentId,
+        ),
       ),
     );
   }
@@ -462,7 +483,8 @@ class DownloadHelper {
                   ],
                 ),
               ),
-              actionsPadding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
               actions: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -489,7 +511,12 @@ class DownloadHelper {
                         TextButton(
                           onPressed: () {
                             Navigator.pop(dialogContextInner);
-                            openPdfDirectly(context, pdfUrl);
+                            openPdfDirectly(
+                              context,
+                              pdfUrl,
+                              title: title,
+                              contentType: postType,
+                            );
                           },
                           child: const Text("Buka PDF"),
                         ),
@@ -506,14 +533,20 @@ class DownloadHelper {
                             });
                           },
                           icon: Icon(
-                            isCurrentlyFavorited ? Icons.favorite : Icons.favorite_border,
-                            color: isCurrentlyFavorited ? Colors.red : Colors.grey[600],
+                            isCurrentlyFavorited
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: isCurrentlyFavorited
+                                ? Colors.red
+                                : Colors.grey[600],
                             size: 20,
                           ),
                           label: Text(
                             isCurrentlyFavorited ? 'Favorit' : 'Favoritkan',
                             style: TextStyle(
-                              color: isCurrentlyFavorited ? Colors.red : Colors.grey[700],
+                              color: isCurrentlyFavorited
+                                  ? Colors.red
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
@@ -553,18 +586,32 @@ class DownloadHelper {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Image.network(
-                      imageUrl,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(
-                          height: 150,
-                          child: Center(child: CircularProgressIndicator()),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(dialogContextInner);
+                        Navigator.pushNamed(
+                          context,
+                          '/image_viewer',
+                          arguments: {
+                            'imageUrl': imageUrl,
+                            'title': title,
+                          },
                         );
                       },
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.broken_image, size: 100, color: Colors.grey),
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const SizedBox(
+                            height: 150,
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.broken_image,
+                                size: 100, color: Colors.grey),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -575,7 +622,8 @@ class DownloadHelper {
                   ],
                 ),
               ),
-              actionsPadding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
               actions: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -596,13 +644,27 @@ class DownloadHelper {
                               fileName: title,
                             );
                           },
-                          child: Row(
-                            children: const [
+                          child: const Row(
+                            children: [
                               Icon(Icons.download, size: 18),
                               SizedBox(width: 4),
                               Text("Unduh"),
                             ],
                           ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContextInner);
+                            Navigator.pushNamed(
+                              context,
+                              '/image_viewer',
+                              arguments: {
+                                'imageUrl': imageUrl,
+                                'title': title,
+                              },
+                            );
+                          },
+                          child: const Text("Lihat"),
                         ),
                       ],
                     ),
@@ -617,14 +679,20 @@ class DownloadHelper {
                             });
                           },
                           icon: Icon(
-                            isCurrentlyFavorited ? Icons.favorite : Icons.favorite_border,
-                            color: isCurrentlyFavorited ? Colors.red : Colors.grey[600],
+                            isCurrentlyFavorited
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: isCurrentlyFavorited
+                                ? Colors.red
+                                : Colors.grey[600],
                             size: 20,
                           ),
                           label: Text(
                             isCurrentlyFavorited ? 'Favorit' : 'Favoritkan',
                             style: TextStyle(
-                              color: isCurrentlyFavorited ? Colors.red : Colors.grey[700],
+                              color: isCurrentlyFavorited
+                                  ? Colors.red
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
@@ -637,32 +705,6 @@ class DownloadHelper {
           },
         );
       },
-    );
-  }
-}
-
-/// Widget private untuk menampung PDF Viewer
-class _PDFViewer extends StatelessWidget {
-  final String pdfUrl;
-  const _PDFViewer({Key? key, required this.pdfUrl}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('PDF Viewer'),
-        leading: IconButton(
-          icon: Image.asset('assets/icons/left-arrow.png', height: 25),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: SfPdfViewer.network(
-        pdfUrl,
-        onDocumentLoadFailed: (details) {
-          debugPrint("PDF Load Failed: ${details.description}");
-          Fluttertoast.showToast(msg: "Gagal memuat PDF: ${details.description}");
-        },
-      ),
     );
   }
 }

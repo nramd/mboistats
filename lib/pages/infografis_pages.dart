@@ -25,7 +25,10 @@ class _InfografisPagesState extends State<InfografisPages> {
     super.initState();
     fetchDataInfografis();
     _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && !isLoading && hasMore) {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !isLoading &&
+          hasMore) {
         fetchDataInfografis();
       }
     });
@@ -39,7 +42,8 @@ class _InfografisPagesState extends State<InfografisPages> {
 
   Future<void> fetchDataInfografis() async {
     setState(() => isLoading = true);
-    final String apiUrl = "https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/page/$currentPage/key/9db89e91c3c142df678e65a78c4e547f";
+    final String apiUrl =
+        "https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/page/$currentPage/key/9db89e91c3c142df678e65a78c4e547f";
 
     try {
       final response = await http.get(Uri.parse(apiUrl));
@@ -65,7 +69,8 @@ class _InfografisPagesState extends State<InfografisPages> {
     }
   }
 
-  void openDownloadConfirmation(BuildContext context, String imageUrl, int index, String imageTitle) async {
+  void openDownloadConfirmation(BuildContext context, String imageUrl,
+      int index, String imageTitle) async {
     try {
       bool confirmDownload = await showDialog(
         context: context,
@@ -76,33 +81,34 @@ class _InfografisPagesState extends State<InfografisPages> {
               textAlign: TextAlign.center,
               style: bold16.copyWith(color: dark1),
             ),
-              content: SingleChildScrollView(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Image.network(
-                            dataInfografis[index]['img'],
-                            fit: BoxFit.fill,
-                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported),
+            content: SingleChildScrollView(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Image.network(
+                          dataInfografis[index]['img'],
+                          fit: BoxFit.fill,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.image_not_supported),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Tanggal Rilis: ${dataInfografis[index]["date"]}",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            "Tanggal Rilis: ${dataInfografis[index]["date"]}",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
             actions: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -116,7 +122,8 @@ class _InfografisPagesState extends State<InfografisPages> {
                     onPressed: () async {
                       Navigator.pop(context, false);
                       String imageTitle = dataInfografis[index]["title"];
-                      await downloadAndShowConfirmation(context, imageUrl, imageTitle);
+                      await downloadAndShowConfirmation(
+                          context, imageUrl, imageTitle);
                     },
                     child: const Text("Unduh"),
                   ),
@@ -130,12 +137,11 @@ class _InfografisPagesState extends State<InfografisPages> {
       if (confirmDownload == true) {
         downloadAndShowConfirmation(context, imageUrl, imageTitle);
       }
-    } catch (error) {
-
-    }
+    } catch (error) {}
   }
 
-  Future<void> downloadAndShowConfirmation(BuildContext context, String pdfUrl, String fileName) async {
+  Future<void> downloadAndShowConfirmation(
+      BuildContext context, String pdfUrl, String fileName) async {
     await DownloadHelper.downloadInfografis(
       context,
       url: pdfUrl,
@@ -171,9 +177,17 @@ class _InfografisPagesState extends State<InfografisPages> {
 
           return InkWell(
             onTap: () {
-              String imageUrl = dataInfografis[index]["img"];
-              String title = dataInfografis[index]["title"];
-              openDownloadConfirmation(context, imageUrl, index, title);
+              final String imageUrl = dataInfografis[index]["img"] ?? '';
+              final String title =
+                  dataInfografis[index]["title"] ?? 'Infografis';
+              Navigator.pushNamed(
+                context,
+                '/image_viewer',
+                arguments: {
+                  'imageUrl': imageUrl,
+                  'title': title,
+                },
+              );
             },
             child: Container(
               clipBehavior: Clip.hardEdge,
@@ -197,7 +211,8 @@ class _InfografisPagesState extends State<InfografisPages> {
                       dataInfografis[index]['img'],
                       fit: BoxFit.cover,
                       width: double.infinity,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported),
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.image_not_supported),
                     ),
                   ),
                   Padding(

@@ -1,11 +1,18 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:mboistats/theme.dart';
 import 'package:mboistats/utils/download_helper.dart';
 
+/// Native Flutter Infographic Viewer (dev-v2-native)
+/// Menggunakan InteractiveViewer & Local Disk Caching (img_cache_{hash}.img)
+/// disertai validasi integritas citra dan manajemen lifecycle.
 class GlobalImageViewer extends StatefulWidget {
   final String imageUrl;
   final String title;
-  
+
   const GlobalImageViewer({
     Key? key,
     required this.imageUrl,
@@ -17,8 +24,120 @@ class GlobalImageViewer extends StatefulWidget {
 }
 
 class _GlobalImageViewerState extends State<GlobalImageViewer> {
+  final TransformationController _transformationController =
+      TransformationController();
+  http.Client? _httpClient;
+  Uint8List? _imageBytes;
+  bool _isLoading = true;
+  String? _errorMessage;
   bool _isDownloading = false;
-  double _downloadProgress = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  @override
+  void dispose() {
+    _httpClient?.close();
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  /// Memeriksa header magic bytes citra (JPEG, PNG, WebP, GIF)
+  bool _isValidImageBytes(Uint8List bytes) {
+    if (bytes.length < 4) return false;
+    final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+    final isPng = bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47;
+    final isRiff = bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46;
+    final isGif = bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x38;
+    return isJpeg || isPng || isRiff || isGif;
+  }
+
+  Future<File> _getCacheFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final hashName = 'img_cache_${widget.imageUrl.hashCode}.img';
+    return File('${dir.path}/$hashName');
+  }
+
+  Future<void> _invalidateCacheFile() async {
+    try {
+      final file = await _getCacheFile();
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadImage() async {
+    try {
+      final file = await _getCacheFile();
+
+      if (await file.exists() && (await file.length()) > 0) {
+        final bytes = await file.readAsBytes();
+        if (_isValidImageBytes(bytes)) {
+          if (mounted) {
+            setState(() {
+              _imageBytes = bytes;
+              _isLoading = false;
+            });
+          }
+          return;
+        } else {
+          await file.delete();
+        }
+      }
+
+      _httpClient?.close();
+      _httpClient = http.Client();
+
+      final response = await _httpClient!.get(
+        Uri.parse(widget.imageUrl),
+        headers: const {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/*,*/*',
+        },
+      ).timeout(const Duration(seconds: 25));
+
+      if (response.statusCode == 200 &&
+          _isValidImageBytes(response.bodyBytes)) {
+        await file.writeAsBytes(response.bodyBytes);
+        if (mounted) {
+          setState(() {
+            _imageBytes = response.bodyBytes;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = response.statusCode == 200
+                ? 'Berkas yang diterima bukan citra yang valid.'
+                : 'Gagal memuat infografis (HTTP ${response.statusCode})';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Gagal mengunduh citra: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   Future<void> _downloadImage() async {
     setState(() {
@@ -45,19 +164,23 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(widget.title, style: pjsBold16.copyWith(color: Colors.white)),
+        title: Text(
+          widget.title,
+          style: pjsBold16.copyWith(color: Colors.white),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (_isDownloading)
-            Center(
+            const Center(
               child: Padding(
-                padding: const EdgeInsets.only(right: 16.0),
+                padding: EdgeInsets.only(right: 16.0),
                 child: SizedBox(
-                  width: 24,
-                  height: 24,
+                  width: 20,
+                  height: 20,
                   child: CircularProgressIndicator(
-                    value: _downloadProgress > 0 ? _downloadProgress : null,
                     color: Colors.white,
                     strokeWidth: 2,
                   ),
@@ -67,38 +190,87 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
           else
             IconButton(
               icon: const Icon(Icons.download, color: Colors.white),
+              tooltip: 'Unduh Infografis',
               onPressed: _downloadImage,
             ),
         ],
       ),
-      body: Center(
-        child: InteractiveViewer(
-          panEnabled: true,
-          boundaryMargin: const EdgeInsets.all(20),
-          minScale: 0.5,
-          maxScale: 4,
-          child: Image.network(
-            widget.imageUrl,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Center(
-                child: CircularProgressIndicator(
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                      : null,
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text(
+                    'Memuat infografis...',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ],
+              ),
+            )
+          : _imageBytes != null
+              ? Center(
+                  child: InteractiveViewer(
+                    transformationController: _transformationController,
+                    panEnabled: true,
+                    boundaryMargin: const EdgeInsets.all(20),
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Image.memory(
+                      _imageBytes!,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) async {
+                          await _invalidateCacheFile();
+                          if (mounted && _imageBytes != null) {
+                            setState(() {
+                              _imageBytes = null;
+                              _errorMessage =
+                                  'Berkas citra rusak atau gagal didekode.';
+                            });
+                          }
+                        });
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            size: 48, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        Text(
+                          _errorMessage ?? 'Infografis tidak dapat dimuat.',
+                          textAlign: TextAlign.center,
+                          style: pjsMedium12.copyWith(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: blueNormal,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isLoading = true;
+                              _errorMessage = null;
+                            });
+                            _loadImage();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Coba Lagi'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return Center(
-                child: Text('Gagal memuat gambar', style: pjsMedium12.copyWith(color: Colors.white)),
-              );
-            },
-          ),
-        ),
-      ),
     );
   }
 }
