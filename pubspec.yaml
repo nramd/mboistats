@@ -65,8 +65,6 @@ flutter:
     - assets_v2/fonts/
     - assets_v2/navbar/
     - assets_v2/icons/
-    - assets_v2/pages/
-    - assets_v2/colors/
     # - assets/icons/mboistatsLogo.png
     # - assets/icons/ekonomi.png
     # - assets/icons/ipm.png
