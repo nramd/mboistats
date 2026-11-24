@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/components/footer.dart';
 import 'package:mboistats/components/global_pdf_viewer.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/theme.dart';
 import 'package:saf/saf.dart';
-import 'dart:convert';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:html_unescape/html_unescape.dart';
 import 'package:html/parser.dart' show parse;
@@ -82,6 +82,44 @@ class _BeritaPageState extends State<BeritaPages> {
       isLoading = true;
     });
 
+    // 1. Jika tanpa filter sektor, utamakan BPS WebAPI live agar cover & PDF selalu HTTP 200
+    if (_selectedSector == 'semua') {
+      try {
+        final brs = await BpsApiService.fetchLiveContentList(
+          model: 'pressrelease',
+          page: currentPage,
+        );
+        if (mounted) {
+          setState(() {
+            if (brs.isNotEmpty) {
+              dataBRS.addAll(brs.map((item) => {
+                'id': item['id']?.toString(),
+                'title': item['title'] ?? '',
+                'thumbnail': item['cover_url'] ?? item['thumbnail'] ?? '',
+                'pdf': item['content_url'] ?? item['pdf'] ?? '',
+                'rl_date': item['rl_date'],
+                'abstract': item['abstract'],
+                'size': item['size'],
+                'created_at': item['created_at'],
+              }));
+              dataBRS.sort(_compareByNewest);
+              currentPage++;
+              if (brs.length < 10) {
+                hasMore = false;
+              }
+            } else {
+              hasMore = false;
+            }
+            isLoading = false;
+          });
+        }
+        return;
+      } catch (e) {
+        debugPrint("Error fetching BRS from BPS API: $e");
+      }
+    }
+
+    // 2. Fallback / filter sektor menggunakan Supabase contents
     try {
       final from = (currentPage - 1) * 20;
       final to = from + 19;
@@ -124,36 +162,8 @@ class _BeritaPageState extends State<BeritaPages> {
           isLoading = false;
         });
       }
-      return;
     } catch (e) {
       debugPrint("Error fetching BRS from Supabase: $e");
-    }
-
-    // Fallback to BPS API if Supabase fails
-    try {
-      final String apiUrl = "https://webapi.bps.go.id/v1/api/list/model/pressrelease/lang/ind/domain/3573/page/$currentPage/key/9db89e91c3c142df678e65a78c4e547f";
-      final response = await http.get(Uri.parse(apiUrl), headers: {'User-Agent': 'Mozilla/5.0'});
-
-      if (response.statusCode == 200) {
-        final parsedResponse = json.decode(response.body);
-        final brs = List<Map<String, dynamic>>.from(parsedResponse["data"][1]);
-
-        if (mounted) {
-          setState(() {
-            if (brs.isNotEmpty) {
-              dataBRS.addAll(brs);
-              dataBRS.sort(_compareByNewest);
-              currentPage++;
-            } else {
-              hasMore = false;
-            }
-            isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => isLoading = false);
-      }
-    } catch (_) {
       if (mounted) setState(() => isLoading = false);
     }
   }
@@ -293,28 +303,20 @@ class _BeritaPageState extends State<BeritaPages> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       clipBehavior: Clip.hardEdge,
-                                      child: thumbnail.isNotEmpty
-                                          ? Image.network(
-                                              thumbnail,
-                                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Center(
-                                                child: Icon(
-                                                  Icons.newspaper,
-                                                  color: dark3,
-                                                  size: 40,
-                                                ),
-                                              ),
-                                            )
-                                          : Center(
-                                              child: Icon(
-                                                Icons.newspaper,
-                                                color: dark3,
-                                                size: 40,
-                                              ),
-                                            ),
+                                      child: BpsCoverImage(
+                                        imageUrl: thumbnail,
+                                        title: title,
+                                        contentType: 'brs',
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                        fallback: Center(
+                                          child: Icon(
+                                            Icons.newspaper,
+                                            color: dark3,
+                                            size: 40,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 8),

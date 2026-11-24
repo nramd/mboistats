@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 
@@ -439,23 +440,18 @@ class _SearchPageState extends State<SearchPage> {
                                         color: Colors.blue.shade50,
                                         borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: coverUrl.isNotEmpty
-                                          ? Image.network(
-                                              coverUrl,
-                                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Image.asset(
-                                                _getIconForSector(sectors),
-                                                errorBuilder: (context, error, stackTrace) =>
-                                                    const Icon(Icons.description, color: Colors.blue, size: 20),
-                                              ),
-                                            )
-                                          : Image.asset(
-                                              _getIconForSector(sectors),
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  const Icon(Icons.description, color: Colors.blue, size: 20),
-                                            ),
+                                      child: BpsCoverImage(
+                                        imageUrl: coverUrl,
+                                        title: title,
+                                        contentType: item['content_type'] as String? ??
+                                            (isInfografis ? 'infografis' : null),
+                                        fit: BoxFit.cover,
+                                        fallback: Image.asset(
+                                          _getIconForSector(sectors),
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              const Icon(Icons.description, color: Colors.blue, size: 20),
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(

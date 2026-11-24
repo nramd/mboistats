@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/components/footer.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/services/youtube_service.dart';
 import 'package:mboistats/utils/download_helper.dart';
@@ -158,141 +158,76 @@ class _DataPageState extends State<DataPage> {
     }
   }
 
-  Future<void> _fetchBrsData() async {
+  Future<List<Map<String, dynamic>>> _fetchSectionItems({
+    required String bpsModel,
+    required String supabaseFilter,
+  }) async {
+    // 1. Prioritaskan BPS WebAPI live agar cover_url & content_url selalu memakai token terbaru (HTTP 200)
+    try {
+      final liveList = await BpsApiService.fetchLiveContentList(
+        model: bpsModel,
+        page: 1,
+      );
+      if (liveList.isNotEmpty) {
+        liveList.sort(_compareByNewest);
+        return liveList;
+      }
+    } catch (_) {}
+
+    // 2. Fallback ke Supabase contents jika BPS API offline/timeout
     try {
       final response = await Supabase.instance.client
           .from('contents')
           .select()
-          .or('content_type.eq.brs,action_type.eq.view_brs_pdf')
+          .or(supabaseFilter)
           .order('created_at', ascending: false)
           .limit(30)
           .timeout(const Duration(seconds: 4));
 
       final list = List<Map<String, dynamic>>.from(response);
       list.sort(_compareByNewest);
-
-      if (list.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _brsItems = list;
-            _loadingBrs = false;
-          });
-        }
-        return;
-      }
-    } catch (_) {}
-
-    // Fallback BPS API
-    try {
-      final response = await http.get(
-        Uri.parse('https://webapi.bps.go.id/v1/api/list/model/pressrelease/lang/ind/domain/3573/page/1/key/9db89e91c3c142df678e65a78c4e547f'),
-        headers: {'User-Agent': 'Mozilla/5.0'},
-      ).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final parsed = json.decode(response.body);
-        final list = List<Map<String, dynamic>>.from(parsed['data'][1]);
-        list.sort(_compareByNewest);
-        if (mounted) {
-          setState(() {
-            _brsItems = list;
-            _loadingBrs = false;
-          });
-        }
-      }
+      return list;
     } catch (_) {
-      if (mounted) setState(() => _loadingBrs = false);
+      return [];
+    }
+  }
+
+  Future<void> _fetchBrsData() async {
+    final list = await _fetchSectionItems(
+      bpsModel: 'pressrelease',
+      supabaseFilter: 'content_type.eq.brs,action_type.eq.view_brs_pdf',
+    );
+    if (mounted) {
+      setState(() {
+        _brsItems = list;
+        _loadingBrs = false;
+      });
     }
   }
 
   Future<void> _fetchInfografisData() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('contents')
-          .select()
-          .or('content_type.eq.infografis,action_type.eq.download_file')
-          .order('created_at', ascending: false)
-          .limit(30)
-          .timeout(const Duration(seconds: 4));
-
-      final list = List<Map<String, dynamic>>.from(response);
-      list.sort(_compareByNewest);
-
-      if (list.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _infografisItems = list;
-            _loadingInfografis = false;
-          });
-        }
-        return;
-      }
-    } catch (_) {}
-
-    // Fallback BPS API
-    try {
-      final response = await http.get(
-        Uri.parse('https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/page/1/key/9db89e91c3c142df678e65a78c4e547f'),
-        headers: {'User-Agent': 'Mozilla/5.0'},
-      ).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final parsed = json.decode(response.body);
-        final list = List<Map<String, dynamic>>.from(parsed['data'][1]);
-        list.sort(_compareByNewest);
-        if (mounted) {
-          setState(() {
-            _infografisItems = list;
-            _loadingInfografis = false;
-          });
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loadingInfografis = false);
+    final list = await _fetchSectionItems(
+      bpsModel: 'infographic',
+      supabaseFilter: 'content_type.eq.infografis,action_type.eq.download_file',
+    );
+    if (mounted) {
+      setState(() {
+        _infografisItems = list;
+        _loadingInfografis = false;
+      });
     }
   }
 
   Future<void> _fetchPublikasiData() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('contents')
-          .select()
-          .or('content_type.eq.publikasi,action_type.eq.view_publikasi_pdf')
-          .order('created_at', ascending: false)
-          .limit(30)
-          .timeout(const Duration(seconds: 4));
-
-      final list = List<Map<String, dynamic>>.from(response);
-      list.sort(_compareByNewest);
-
-      if (list.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _publikasiItems = list;
-            _loadingPublikasi = false;
-          });
-        }
-        return;
-      }
-    } catch (_) {}
-
-    // Fallback BPS API
-    try {
-      final response = await http.get(
-        Uri.parse('https://webapi.bps.go.id/v1/api/list/domain/3573/model/publication/lang/ind/page/1/key/9db89e91c3c142df678e65a78c4e547f'),
-        headers: {'User-Agent': 'Mozilla/5.0'},
-      ).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final parsed = json.decode(response.body);
-        final list = List<Map<String, dynamic>>.from(parsed['data'][1]);
-        list.sort(_compareByNewest);
-        if (mounted) {
-          setState(() {
-            _publikasiItems = list;
-            _loadingPublikasi = false;
-          });
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loadingPublikasi = false);
+    final list = await _fetchSectionItems(
+      bpsModel: 'publication',
+      supabaseFilter: 'content_type.eq.publikasi,action_type.eq.view_publikasi_pdf',
+    );
+    if (mounted) {
+      setState(() {
+        _publikasiItems = list;
+        _loadingPublikasi = false;
+      });
     }
   }
 
@@ -719,15 +654,13 @@ class _DataPageState extends State<DataPage> {
                   Expanded(
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: thumbnail.isNotEmpty
-                          ? Image.network(
-                              thumbnail,
-                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(color: blueLighter, child: const Icon(Icons.newspaper, color: blueNormal)),
-                            )
-                          : Container(color: blueLighter, child: const Icon(Icons.newspaper, color: blueNormal)),
+                      child: BpsCoverImage(
+                        imageUrl: thumbnail,
+                        title: title,
+                        contentType: 'brs',
+                        fit: BoxFit.cover,
+                        fallback: Container(color: blueLighter, child: const Icon(Icons.newspaper, color: blueNormal)),
+                      ),
                     ),
                   ),
                   Padding(
@@ -820,15 +753,13 @@ class _DataPageState extends State<DataPage> {
                   Expanded(
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: imgUrl.isNotEmpty
-                          ? Image.network(
-                              imgUrl,
-                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(color: blueLighter, child: const Icon(Icons.image, color: blueNormal)),
-                            )
-                          : Container(color: blueLighter, child: const Icon(Icons.image, color: blueNormal)),
+                      child: BpsCoverImage(
+                        imageUrl: imgUrl,
+                        title: title,
+                        contentType: 'infografis',
+                        fit: BoxFit.cover,
+                        fallback: Container(color: blueLighter, child: const Icon(Icons.image, color: blueNormal)),
+                      ),
                     ),
                   ),
                   Padding(
@@ -921,15 +852,13 @@ class _DataPageState extends State<DataPage> {
                   Expanded(
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: thumbnail.isNotEmpty
-                          ? Image.network(
-                              thumbnail,
-                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(color: blueLighter, child: const Icon(Icons.book, color: blueNormal)),
-                            )
-                          : Container(color: blueLighter, child: const Icon(Icons.book, color: blueNormal)),
+                      child: BpsCoverImage(
+                        imageUrl: thumbnail,
+                        title: title,
+                        contentType: 'publikasi',
+                        fit: BoxFit.cover,
+                        fallback: Container(color: blueLighter, child: const Icon(Icons.book, color: blueNormal)),
+                      ),
                     ),
                   ),
                   Padding(

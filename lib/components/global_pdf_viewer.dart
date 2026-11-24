@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:mboistats/theme.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/utils/download_helper.dart';
 
@@ -33,6 +34,7 @@ class GlobalPDFViewer extends StatefulWidget {
 class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
   final PdfViewerController _pdfViewerController = PdfViewerController();
   http.Client? _httpClient;
+  late String _activeUrl;
   bool _isDownloading = false;
   Uint8List? _pdfBytes;
   bool _isLoading = true;
@@ -41,6 +43,7 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
   @override
   void initState() {
     super.initState();
+    _activeUrl = widget.pdfUrl;
     _loadPdf();
   }
 
@@ -60,9 +63,10 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
         bytes[3] == 0x46; // F
   }
 
-  Future<File> _getCacheFile() async {
+  Future<File> _getCacheFile([String? url]) async {
     final dir = await getApplicationDocumentsDirectory();
-    final hashName = 'pdf_cache_${widget.pdfUrl.hashCode}.pdf';
+    final target = url ?? _activeUrl;
+    final hashName = 'pdf_cache_${target.hashCode}.pdf';
     return File('${dir.path}/$hashName');
   }
 
@@ -75,10 +79,21 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
     } catch (_) {}
   }
 
+  Future<http.Response> _fetchPdfResponse(String url) {
+    return _httpClient!.get(
+      Uri.parse(url),
+      headers: const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/pdf,*/*',
+      },
+    ).timeout(const Duration(seconds: 25));
+  }
+
   /// Memeriksa cache lokal atau mengunduh langsung bytes PDF dengan User-Agent BPS
   Future<void> _loadPdf() async {
     try {
-      final file = await _getCacheFile();
+      final file = await _getCacheFile(_activeUrl);
 
       if (await file.exists() && (await file.length()) > 0) {
         final bytes = await file.readAsBytes();
@@ -100,29 +115,52 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
       _httpClient = http.Client();
 
       // Unduh dari server dengan User-Agent resmi agar tidak diblokir oleh WebAPI BPS
-      final response = await _httpClient!.get(
-        Uri.parse(widget.pdfUrl),
-        headers: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/pdf,*/*',
-        },
-      ).timeout(const Duration(seconds: 25));
+      http.Response? response;
+      if (_activeUrl.isNotEmpty) {
+        response = await _fetchPdfResponse(_activeUrl);
+      }
 
-      if (response.statusCode == 200 && _isValidPdfBytes(response.bodyBytes)) {
-        await file.writeAsBytes(response.bodyBytes);
+      // Jika URL lama dari Supabase kedaluwarsa (HTTP 400), resolve ulang dari WebAPI BPS
+      if (response == null ||
+          response.statusCode != 200 ||
+          !_isValidPdfBytes(response.bodyBytes)) {
+        final fresh = await BpsApiService.resolveFreshMediaUrls(
+          title: widget.title,
+          preferredType: widget.contentType,
+          client: _httpClient,
+        );
+        final freshPdfUrl = fresh?.contentUrl;
+        if (freshPdfUrl != null &&
+            freshPdfUrl.isNotEmpty &&
+            freshPdfUrl != _activeUrl) {
+          final retryResp = await _fetchPdfResponse(freshPdfUrl);
+          if (retryResp.statusCode == 200 &&
+              _isValidPdfBytes(retryResp.bodyBytes)) {
+            _activeUrl = freshPdfUrl;
+            response = retryResp;
+          }
+        }
+      }
+
+      if (response != null &&
+          response.statusCode == 200 &&
+          _isValidPdfBytes(response.bodyBytes)) {
+        final validBytes = response.bodyBytes;
+        final targetFile = await _getCacheFile(_activeUrl);
+        await targetFile.writeAsBytes(validBytes);
         if (mounted) {
           setState(() {
-            _pdfBytes = response.bodyBytes;
+            _pdfBytes = validBytes;
             _isLoading = false;
           });
         }
       } else {
         if (mounted) {
+          final status = response?.statusCode ?? 0;
           setState(() {
-            _errorMessage = response.statusCode == 200
+            _errorMessage = status == 200
                 ? 'Berkas yang diterima bukan dokumen PDF yang valid.'
-                : 'Gagal memuat dokumen (HTTP ${response.statusCode})';
+                : 'Gagal memuat dokumen (HTTP $status)';
             _isLoading = false;
           });
         }
@@ -145,7 +183,7 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
     try {
       await DownloadHelper.downloadDocument(
         context,
-        url: widget.pdfUrl,
+        url: _activeUrl,
         fileName: widget.title,
         contentType: widget.contentType,
         contentId: widget.contentId,

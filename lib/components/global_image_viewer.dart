@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:mboistats/theme.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/utils/download_helper.dart';
 
 /// Native Flutter Infographic Viewer (dev-v2-native)
@@ -27,6 +28,7 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
   final TransformationController _transformationController =
       TransformationController();
   http.Client? _httpClient;
+  late String _activeUrl;
   Uint8List? _imageBytes;
   bool _isLoading = true;
   String? _errorMessage;
@@ -35,6 +37,7 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
   @override
   void initState() {
     super.initState();
+    _activeUrl = widget.imageUrl;
     _loadImage();
   }
 
@@ -64,9 +67,10 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
     return isJpeg || isPng || isRiff || isGif;
   }
 
-  Future<File> _getCacheFile() async {
+  Future<File> _getCacheFile([String? url]) async {
     final dir = await getApplicationDocumentsDirectory();
-    final hashName = 'img_cache_${widget.imageUrl.hashCode}.img';
+    final target = url ?? _activeUrl;
+    final hashName = 'img_cache_${target.hashCode}.img';
     return File('${dir.path}/$hashName');
   }
 
@@ -79,9 +83,20 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
     } catch (_) {}
   }
 
+  Future<http.Response> _fetchImageResponse(String url) {
+    return _httpClient!.get(
+      Uri.parse(url),
+      headers: const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/*,*/*',
+      },
+    ).timeout(const Duration(seconds: 25));
+  }
+
   Future<void> _loadImage() async {
     try {
-      final file = await _getCacheFile();
+      final file = await _getCacheFile(_activeUrl);
 
       if (await file.exists() && (await file.length()) > 0) {
         final bytes = await file.readAsBytes();
@@ -101,30 +116,57 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
       _httpClient?.close();
       _httpClient = http.Client();
 
-      final response = await _httpClient!.get(
-        Uri.parse(widget.imageUrl),
-        headers: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/*,*/*',
-        },
-      ).timeout(const Duration(seconds: 25));
+      http.Response? response;
+      if (_activeUrl.isNotEmpty) {
+        response = await _fetchImageResponse(_activeUrl);
+      }
 
-      if (response.statusCode == 200 &&
+      // Jika URL lama dari Supabase kedaluwarsa (misal HTTP 400), resolve ulang dari WebAPI BPS
+      if (response == null ||
+          response.statusCode != 200 ||
+          !_isValidImageBytes(response.bodyBytes)) {
+        final fresh = await BpsApiService.resolveFreshMediaUrls(
+          title: widget.title,
+          preferredType: 'infografis',
+          client: _httpClient,
+        );
+        final candidates = <String>[
+          if (fresh?.contentUrl != null && fresh!.contentUrl!.isNotEmpty)
+            fresh.contentUrl!,
+          if (fresh?.coverUrl != null && fresh!.coverUrl!.isNotEmpty)
+            fresh.coverUrl!,
+        ];
+        for (final candidate in candidates) {
+          if (candidate == _activeUrl) continue;
+          final retryResp = await _fetchImageResponse(candidate);
+          if (retryResp.statusCode == 200 &&
+              _isValidImageBytes(retryResp.bodyBytes)) {
+            _activeUrl = candidate;
+            response = retryResp;
+            break;
+          }
+        }
+      }
+
+      if (response != null &&
+          response.statusCode == 200 &&
           _isValidImageBytes(response.bodyBytes)) {
-        await file.writeAsBytes(response.bodyBytes);
+        final validBytes = response.bodyBytes;
+        final targetFile = await _getCacheFile(_activeUrl);
+        await targetFile.writeAsBytes(validBytes);
         if (mounted) {
           setState(() {
-            _imageBytes = response.bodyBytes;
+            _imageBytes = validBytes;
             _isLoading = false;
           });
         }
       } else {
         if (mounted) {
+          final status = response?.statusCode ?? 0;
           setState(() {
-            _errorMessage = response.statusCode == 200
+            _errorMessage = status == 200
                 ? 'Berkas yang diterima bukan citra yang valid.'
-                : 'Gagal memuat infografis (HTTP ${response.statusCode})';
+                : 'Gagal memuat infografis (HTTP $status)';
             _isLoading = false;
           });
         }
@@ -146,9 +188,9 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
     try {
       await DownloadHelper.downloadInfografis(
         context,
-        url: widget.imageUrl,
+        url: _activeUrl,
         fileName: widget.title,
-        coverUrl: widget.imageUrl,
+        coverUrl: _activeUrl,
       );
     } finally {
       if (mounted) {

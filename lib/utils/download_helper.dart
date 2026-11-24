@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:html/parser.dart';
 import 'package:html_unescape/html_unescape.dart';
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/components/global_pdf_viewer.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 
@@ -237,6 +239,7 @@ class DownloadHelper {
         url: url,
         safeName: safeName,
         fileName: fileName,
+        contentType: contentType,
       );
     } else {
       await _downloadOnAndroid(
@@ -244,8 +247,40 @@ class DownloadHelper {
         safeName: safeName,
         fileName: fileName,
         targetExtension: targetExtension,
+        contentType: contentType,
       );
     }
+  }
+
+  static Future<HttpClientResponse> _openStreamWithRetry(
+    HttpClient client, {
+    required String url,
+    required String fileName,
+    required String contentType,
+  }) async {
+    Future<HttpClientResponse> sendReq(String targetUrl) async {
+      final request = await client.getUrl(Uri.parse(targetUrl));
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      );
+      request.headers.set(HttpHeaders.acceptHeader, '*/*');
+      return await request.close();
+    }
+
+    var response = await sendReq(url);
+    if (response.statusCode != 200) {
+      await response.drain<void>();
+      final fresh = await BpsApiService.resolveFreshMediaUrls(
+        title: fileName,
+        preferredType: contentType,
+      );
+      final freshUrl = fresh?.contentUrl ?? fresh?.coverUrl;
+      if (freshUrl != null && freshUrl.isNotEmpty && freshUrl != url) {
+        response = await sendReq(freshUrl);
+      }
+    }
+    return response;
   }
 
   /// Logika download khusus iOS: simpan ke Dokumen Aplikasi (tersedia di app Files) & buka via Quick Look
@@ -253,6 +288,7 @@ class DownloadHelper {
     required String url,
     required String safeName,
     required String fileName,
+    required String contentType,
   }) async {
     HttpClient? client;
     try {
@@ -260,23 +296,24 @@ class DownloadHelper {
       final filePath = '${dir.path}/$safeName';
       final file = File(filePath);
 
-      // 1. Periksa apakah berkas sudah pernah di-cache oleh viewer (GlobalPDFViewer)
-      final cachedFile = File('${dir.path}/pdf_cache_${url.hashCode}.pdf');
-      if (await cachedFile.exists() && (await cachedFile.length()) > 0) {
-        await cachedFile.copy(filePath);
+      // 1. Periksa apakah berkas sudah pernah di-cache oleh viewer
+      final cachedPdf = File('${dir.path}/pdf_cache_${url.hashCode}.pdf');
+      final cachedImg = File('${dir.path}/img_cache_${url.hashCode}.img');
+      if (await cachedPdf.exists() && (await cachedPdf.length()) > 0) {
+        await cachedPdf.copy(filePath);
+      } else if (await cachedImg.exists() && (await cachedImg.length()) > 0) {
+        await cachedImg.copy(filePath);
       } else {
-        // 2. Unduh menggunakan HttpClient dengan streaming langsung ke berkas (tanpa buffer RAM & tanpa timeout paksa)
+        // 2. Unduh menggunakan HttpClient dengan streaming langsung ke berkas
         client = HttpClient();
         client.connectionTimeout = const Duration(seconds: 30);
 
-        final request = await client.getUrl(Uri.parse(url));
-        request.headers.set(
-          HttpHeaders.userAgentHeader,
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        final response = await _openStreamWithRetry(
+          client,
+          url: url,
+          fileName: fileName,
+          contentType: contentType,
         );
-        request.headers.set(HttpHeaders.acceptHeader, '*/*');
-
-        final response = await request.close();
         if (response.statusCode == 200) {
           final sink = file.openWrite();
           await response.pipe(sink);
@@ -318,6 +355,7 @@ class DownloadHelper {
     required String safeName,
     required String fileName,
     required String targetExtension,
+    required String contentType,
   }) async {
     try {
       await FileDownloader.downloadFile(
@@ -341,6 +379,7 @@ class DownloadHelper {
             safeName: safeName,
             fileName: fileName,
             targetExtension: targetExtension,
+            contentType: contentType,
           );
         },
       );
@@ -350,6 +389,7 @@ class DownloadHelper {
         safeName: safeName,
         fileName: fileName,
         targetExtension: targetExtension,
+        contentType: contentType,
       );
     }
   }
@@ -360,6 +400,7 @@ class DownloadHelper {
     required String safeName,
     required String fileName,
     required String targetExtension,
+    required String contentType,
   }) async {
     HttpClient? client;
     try {
@@ -378,14 +419,12 @@ class DownloadHelper {
       client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 30);
 
-      final request = await client.getUrl(Uri.parse(url));
-      request.headers.set(
-        HttpHeaders.userAgentHeader,
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      final response = await _openStreamWithRetry(
+        client,
+        url: url,
+        fileName: fileName,
+        contentType: contentType,
       );
-      request.headers.set(HttpHeaders.acceptHeader, '*/*');
-
-      final response = await request.close();
       if (response.statusCode == 200) {
         final sink = file.openWrite();
         await response.pipe(sink);
@@ -598,19 +637,13 @@ class DownloadHelper {
                           },
                         );
                       },
-                      child: Image.network(
-                        imageUrl,
+                      child: BpsCoverImage(
+                        imageUrl: imageUrl,
+                        title: title,
+                        contentType: 'infografis',
                         fit: BoxFit.contain,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const SizedBox(
-                            height: 150,
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.broken_image,
-                                size: 100, color: Colors.grey),
+                        fallback: const Icon(Icons.broken_image,
+                            size: 100, color: Colors.grey),
                       ),
                     ),
                     const SizedBox(height: 8),

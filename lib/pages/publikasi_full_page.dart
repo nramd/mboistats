@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/components/footer.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -77,6 +77,44 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
     if (_isLoading) return;
     setState(() => _isLoading = true);
 
+    // 1. Jika tanpa filter sektor, utamakan BPS WebAPI live agar cover & PDF selalu HTTP 200
+    if (_selectedSector == 'semua') {
+      try {
+        final publikasi = await BpsApiService.fetchLiveContentList(
+          model: 'publication',
+          page: _currentPage,
+        );
+        if (mounted) {
+          setState(() {
+            if (publikasi.isNotEmpty) {
+              _dataPublikasi.addAll(publikasi.map((item) => {
+                'id': item['id']?.toString(),
+                'title': item['title'] ?? '',
+                'cover': item['cover_url'] ?? item['cover'] ?? '',
+                'pdf': item['content_url'] ?? item['pdf'] ?? '',
+                'rl_date': item['rl_date'],
+                'abstract': item['abstract'],
+                'size': item['size'],
+                'created_at': item['created_at'],
+              }));
+              _dataPublikasi.sort(_compareByNewest);
+              _currentPage++;
+              if (publikasi.length < 10) {
+                _hasMore = false;
+              }
+            } else {
+              _hasMore = false;
+            }
+            _isLoading = false;
+          });
+        }
+        return;
+      } catch (e) {
+        debugPrint("Error fetching Publikasi from BPS API: $e");
+      }
+    }
+
+    // 2. Fallback / filter sektor menggunakan Supabase contents
     try {
       final from = (_currentPage - 1) * 20;
       final to = from + 19;
@@ -119,40 +157,8 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
           _isLoading = false;
         });
       }
-      return;
     } catch (e) {
       debugPrint("Error fetching Publikasi from Supabase: $e");
-    }
-
-    // Fallback to BPS API
-    final String apiUrl =
-        "https://webapi.bps.go.id/v1/api/list/domain/3573/model/publication/lang/ind/page/$_currentPage/key/9db89e91c3c142df678e65a78c4e547f";
-
-    try {
-      final response = await http.get(Uri.parse(apiUrl), headers: {'User-Agent': 'Mozilla/5.0'});
-      if (response.statusCode == 200) {
-        final parsedResponse = json.decode(response.body);
-        if (parsedResponse["data"] != null && parsedResponse["data"][1] != null) {
-          final List<dynamic> publikasi = parsedResponse["data"][1];
-          if (publikasi.isEmpty) {
-            setState(() => _hasMore = false);
-          } else {
-            final list = List<Map<String, dynamic>>.from(publikasi);
-            setState(() {
-              _currentPage++;
-              _dataPublikasi.addAll(list);
-              _dataPublikasi.sort(_compareByNewest);
-            });
-          }
-        } else {
-          setState(() => _hasMore = false);
-        }
-      } else {
-        setState(() => _hasMore = false);
-      }
-    } catch (_) {
-      // Handle error quietly
-    } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -301,28 +307,20 @@ class _PublikasiFullPageState extends State<PublikasiFullPage> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       clipBehavior: Clip.hardEdge,
-                                      child: coverUrl.isNotEmpty
-                                          ? Image.network(
-                                              coverUrl,
-                                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                                              fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Center(
-                                                child: Icon(
-                                                  Icons.book,
-                                                  color: dark3,
-                                                  size: 40,
-                                                ),
-                                              ),
-                                            )
-                                          : Center(
-                                              child: Icon(
-                                                Icons.book,
-                                                color: dark3,
-                                                size: 40,
-                                              ),
-                                            ),
+                                      child: BpsCoverImage(
+                                        imageUrl: coverUrl,
+                                        title: title,
+                                        contentType: 'publikasi',
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        fallback: Center(
+                                          child: Icon(
+                                            Icons.book,
+                                            color: dark3,
+                                            size: 40,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 8),

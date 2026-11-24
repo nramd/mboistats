@@ -2,12 +2,12 @@
 import 'package:flutter/material.dart';
 import 'package:html/parser.dart';
 import 'package:html_unescape/html_unescape.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:saf/saf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mboistats/components/bps_cover_image.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/components/global_pdf_viewer.dart';
 import 'package:mboistats/utils/download_helper.dart';
@@ -31,6 +31,31 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
   }
 
   Future<void> fetchData() async {
+    // 1. Prioritaskan WebAPI BPS live agar cover & PDF memakai token terbaru (HTTP 200)
+    try {
+      final publications = await BpsApiService.fetchLiveContentList(
+        model: 'publication',
+        page: 1,
+      );
+      if (publications.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            dataPublikasi = publications.map((item) => {
+              'id': item['id']?.toString(),
+              'title': item['title'] ?? '',
+              'cover': item['cover_url'] ?? item['cover'] ?? '',
+              'pdf': item['content_url'] ?? item['pdf'] ?? '',
+              'abstract': item['abstract'] ?? '',
+              'rl_date': item['rl_date'] ?? '',
+              'size': item['size'] ?? '',
+            }).toList();
+          });
+        }
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Fallback ke Supabase contents
     try {
       final response = await Supabase.instance.client
           .from('contents')
@@ -51,24 +76,8 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
             }).toList();
           });
         }
-        return;
       }
     } catch (_) {}
-
-    // Fallback BPS API
-    try {
-      final response = await http.get(Uri.parse('http://webapi.bps.go.id/v1/api/list/domain/3573/model/publication/lang/ind/page/1/key/9db89e91c3c142df678e65a78c4e547f'));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final publications = (data['data'][1] as List).cast<Map<String, dynamic>>();
-        if (mounted) {
-          setState(() {
-            dataPublikasi = publications;
-          });
-        }
-      }
-    } catch (error) {}
   }
 
   @override
@@ -126,10 +135,18 @@ class _CarouselPublikasiState extends State<CarouselPublikasi> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(15),
-                  child: Image.network(
-                    item['cover'],
+                  child: BpsCoverImage(
+                    imageUrl: (item['cover'] ?? '').toString(),
+                    title: (item['title'] ?? '').toString(),
+                    contentType: 'publikasi',
                     width: MediaQuery.of(context).size.width,
                     fit: BoxFit.cover,
+                    fallback: Container(
+                      color: blueLighter,
+                      child: const Center(
+                        child: Icon(Icons.book, color: blueNormal, size: 48),
+                      ),
+                    ),
                   ),
                 ),
               ),

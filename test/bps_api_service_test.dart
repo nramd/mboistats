@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mboistats/services/bps_api_service.dart';
 
 void main() {
@@ -93,6 +96,94 @@ void main() {
       expect(result.decimal, 0);
       expect(result.series[0].values, [null, 706341.0]);
       expect(result.series[1].values, [507286.0, 536122.0]);
+    });
+  });
+
+  group('BpsApiService live list & fresh URL recovery', () {
+    test('Normalizes live infographic items and strips BPS date suffix',
+        () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'status': 'OK',
+            'data': [
+              {'page': 1, 'pages': 1},
+              [
+                {
+                  'title':
+                      'Tingkat Penghunian Kamar Hotel di Kota Malang(1)2026-10-01',
+                  'img': 'https://webapi.bps.go.id/cover.php?f=AQAD_COVER',
+                  'dl': 'https://webapi.bps.go.id/download.php?f=AQAD_DL',
+                  'date': '2026-10-01',
+                },
+              ],
+            ],
+          }),
+          200,
+        );
+      });
+
+      final list = await BpsApiService.fetchLiveContentList(
+        model: 'infographic',
+        page: 99,
+        forceRefresh: true,
+        client: mockClient,
+      );
+
+      expect(list.length, 1);
+      expect(
+        list.first['title'],
+        'Tingkat Penghunian Kamar Hotel di Kota Malang',
+      );
+      expect(
+        list.first['cover_url'],
+        'https://webapi.bps.go.id/cover.php?f=AQAD_COVER',
+      );
+      expect(
+        list.first['content_url'],
+        'https://webapi.bps.go.id/download.php?f=AQAD_DL',
+      );
+    });
+
+    test('Resolves fresh URLs by title when Supabase URL has expired',
+        () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.path.contains('/keyword/')) {
+          return http.Response(
+            jsonEncode({
+              'status': 'OK',
+              'data': [
+                {'page': 1, 'pages': 1},
+                [
+                  {
+                    'title': 'Infografis ST2023 - I Kota Malang',
+                    'img': 'https://webapi.bps.go.id/cover.php?f=AQAD_ST_IMG',
+                    'dl': 'https://webapi.bps.go.id/download.php?f=AQAD_ST_DL',
+                  },
+                ],
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('{"status":"Error"}', 404);
+      });
+
+      final resolved = await BpsApiService.resolveFreshMediaUrls(
+        title: 'Infografis ST2023 - I Kota Malang',
+        preferredType: 'infografis',
+        client: mockClient,
+      );
+
+      expect(resolved, isNotNull);
+      expect(
+        resolved!.coverUrl,
+        'https://webapi.bps.go.id/cover.php?f=AQAD_ST_IMG',
+      );
+      expect(
+        resolved.contentUrl,
+        'https://webapi.bps.go.id/download.php?f=AQAD_ST_DL',
+      );
     });
   });
 }

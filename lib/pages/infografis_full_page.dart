@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:mboistats/services/recommendation_service.dart';
-import 'dart:convert';
+import 'package:mboistats/components/bps_cover_image.dart';
 import 'package:mboistats/components/footer.dart';
+import 'package:mboistats/services/bps_api_service.dart';
 import 'package:mboistats/services/logger_service.dart';
 import 'package:mboistats/theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -87,6 +86,41 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
     if (_isLoading) return;
     setState(() => _isLoading = true);
 
+    // 1. Jika tanpa filter sektor, utamakan BPS WebAPI live agar gambar selalu HTTP 200
+    if (_selectedSector == 'semua') {
+      try {
+        final infografis = await BpsApiService.fetchLiveContentList(
+          model: 'infographic',
+          page: _currentPage,
+        );
+        if (mounted) {
+          setState(() {
+            if (infografis.isNotEmpty) {
+              _dataInfografis.addAll(infografis.map((item) => {
+                'id': item['id']?.toString(),
+                'title': item['title'] ?? '',
+                'img': item['cover_url'] ?? item['img'] ?? '',
+                'dl': item['content_url'] ?? item['dl'] ?? item['img'] ?? '',
+                'created_at': item['created_at'],
+              }));
+              _dataInfografis.sort(_compareByNewest);
+              _currentPage++;
+              if (infografis.length < 10) {
+                _hasMore = false;
+              }
+            } else {
+              _hasMore = false;
+            }
+            _isLoading = false;
+          });
+        }
+        return;
+      } catch (e) {
+        debugPrint("Error fetching Infografis from BPS API: $e");
+      }
+    }
+
+    // 2. Fallback / filter sektor menggunakan Supabase contents
     try {
       final from = (_currentPage - 1) * 20;
       final to = from + 19;
@@ -129,40 +163,8 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
           _isLoading = false;
         });
       }
-      return;
     } catch (e) {
       debugPrint("Error fetching Infografis from Supabase: $e");
-    }
-
-    // Fallback to BPS API
-    final String apiUrl =
-        "https://webapi.bps.go.id/v1/api/list/domain/3573/model/infographic/lang/ind/domain/3573/page/$_currentPage/key/9db89e91c3c142df678e65a78c4e547f";
-
-    try {
-      final response = await http.get(Uri.parse(apiUrl), headers: {'User-Agent': 'Mozilla/5.0'});
-      if (response.statusCode == 200) {
-        final parsedResponse = json.decode(response.body);
-        if (parsedResponse["data"] != null && parsedResponse["data"][1] != null) {
-          final List<dynamic> infografis = parsedResponse["data"][1];
-          if (infografis.isEmpty) {
-            setState(() => _hasMore = false);
-          } else {
-            final list = List<Map<String, dynamic>>.from(infografis);
-            setState(() {
-              _currentPage++;
-              _dataInfografis.addAll(list);
-              _dataInfografis.sort(_compareByNewest);
-            });
-          }
-        } else {
-          setState(() => _hasMore = false);
-        }
-      } else {
-        setState(() => _hasMore = false);
-      }
-    } catch (_) {
-      // Handle error quietly
-    } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -307,28 +309,20 @@ class _InfografisFullPageState extends State<InfografisFullPage> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       clipBehavior: Clip.hardEdge,
-                                      child: imgUrl.isNotEmpty
-                                          ? Image.network(
-                                              imgUrl,
-                                              headers: const {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Center(
-                                                child: Icon(
-                                                  Icons.image,
-                                                  color: dark3,
-                                                  size: 40,
-                                                ),
-                                              ),
-                                            )
-                                          : Center(
-                                              child: Icon(
-                                                Icons.image,
-                                                color: dark3,
-                                                size: 40,
-                                              ),
-                                            ),
+                                      child: BpsCoverImage(
+                                        imageUrl: imgUrl,
+                                        title: title,
+                                        contentType: 'infografis',
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                        fallback: Center(
+                                          child: Icon(
+                                            Icons.image,
+                                            color: dark3,
+                                            size: 40,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 8),

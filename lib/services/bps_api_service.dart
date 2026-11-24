@@ -9,6 +9,14 @@ class BpsApiService {
   static const String _baseUrl = 'https://webapi.bps.go.id/v1/api/list';
   static const String _apiKey = '9db89e91c3c142df678e65a78c4e547f';
   static const String _domain = '3573'; // Kota Malang
+  static const Map<String, String> bpsHeaders = {
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
+
+  static final Map<String, List<Map<String, dynamic>>> _liveListCache = {};
+  static final Map<String, BpsMediaUrls> _resolvedMediaCache = {};
+  static final Map<String, Future<BpsMediaUrls?>> _inFlightMediaLookups = {};
 
   static Future<File> _getCacheFile(int varId) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -206,6 +214,304 @@ class BpsApiService {
     mergedJson['datacontent'] = mergedDataContent;
     return mergedJson;
   }
+
+  /// Mengambil daftar BRS, Infografis, atau Publikasi langsung dari WebAPI BPS
+  /// untuk memastikan tautan gambar/PDF memakai token `?f=` terbaru (HTTP 200).
+  static Future<List<Map<String, dynamic>>> fetchLiveContentList({
+    required String model,
+    int page = 1,
+    bool forceRefresh = false,
+    http.Client? client,
+  }) async {
+    final cacheKey = '${model}_$page';
+    if (!forceRefresh && _liveListCache.containsKey(cacheKey)) {
+      return _liveListCache[cacheKey]!
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+
+    final url =
+        '$_baseUrl/domain/$_domain/model/$model/lang/ind/page/$page/key/$_apiKey';
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    try {
+      final response = await httpClient
+          .get(Uri.parse(url), headers: bpsHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw Exception('HTTP Error: ${response.statusCode}');
+      }
+
+      final parsed = jsonDecode(response.body);
+      if (parsed is! Map<String, dynamic> ||
+          parsed['data'] is! List ||
+          (parsed['data'] as List).length < 2 ||
+          parsed['data'][1] is! List) {
+        return [];
+      }
+
+      final rawList = List<Map<String, dynamic>>.from(
+        (parsed['data'][1] as List).map((e) => Map<String, dynamic>.from(e)),
+      );
+      final normalized = rawList.map((item) => _normalizeLiveItem(item, model)).toList();
+      _liveListCache[cacheKey] = normalized;
+      return normalized.map((e) => Map<String, dynamic>.from(e)).toList();
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
+  static Map<String, dynamic> _normalizeLiveItem(
+    Map<String, dynamic> raw,
+    String model,
+  ) {
+    final item = Map<String, dynamic>.from(raw);
+    final rawTitle = (item['title'] ?? item['judul'] ?? '').toString().trim();
+    // BPS infographic API sering menempelkan "(1)YYYY-MM-DD" di akhir judul
+    final cleanTitle =
+        rawTitle.replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '').trim();
+    final cover =
+        (item['cover'] ?? item['img'] ?? item['thumbnail'] ?? '').toString();
+    final content = (item['pdf'] ?? item['dl'] ?? item['img'] ?? '').toString();
+    final dateStr =
+        (item['rl_date'] ?? item['sch_date'] ?? item['date'] ?? '').toString();
+
+    item['title'] = cleanTitle.isNotEmpty ? cleanTitle : rawTitle;
+    item['cover_url'] = cover;
+    item['content_url'] = content;
+    item['content_type'] = model == 'pressrelease'
+        ? 'brs'
+        : (model == 'infographic' ? 'infografis' : 'publikasi');
+    if (dateStr.isNotEmpty) {
+      item['created_at'] = dateStr;
+    }
+    return item;
+  }
+
+  /// Mencari ulang tautan media BPS yang segar (mengatasi token `?f=` kedaluwarsa / HTTP 400).
+  static Future<BpsMediaUrls?> resolveFreshMediaUrls({
+    required String title,
+    String? preferredType,
+    http.Client? client,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) return null;
+
+    final cacheKey = '${preferredType ?? ''}|${cleanTitle.toLowerCase()}';
+    if (_resolvedMediaCache.containsKey(cacheKey)) {
+      return _resolvedMediaCache[cacheKey];
+    }
+
+    final existingLookup = _inFlightMediaLookups[cacheKey];
+    if (existingLookup != null) {
+      return await existingLookup;
+    }
+
+    final future = _lookupFreshMediaUrls(
+      title: cleanTitle,
+      preferredType: preferredType,
+      client: client,
+    );
+    _inFlightMediaLookups[cacheKey] = future;
+
+    try {
+      final result = await future;
+      if (result != null) {
+        _resolvedMediaCache[cacheKey] = result;
+      }
+      return result;
+    } finally {
+      _inFlightMediaLookups.remove(cacheKey);
+    }
+  }
+
+  static Future<BpsMediaUrls?> _lookupFreshMediaUrls({
+    required String title,
+    String? preferredType,
+    http.Client? client,
+  }) async {
+    final models = _candidateModelsForType(preferredType);
+    final keywords = _buildSearchKeywords(title);
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    Map<String, dynamic>? bestMatch;
+    double bestScore = 0.0;
+
+    void evaluateCandidates(List<Map<String, dynamic>> candidates) {
+      for (final item in candidates) {
+        final candTitle = (item['title'] ?? '').toString();
+        final score = _scoreTitleMatch(title, candTitle);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = item;
+        }
+      }
+    }
+
+    try {
+      // 1. Cek cache daftar live yang sudah pernah dimuat
+      for (final model in models) {
+        final cached = _liveListCache['${model}_1'];
+        if (cached != null) {
+          evaluateCandidates(cached);
+        }
+      }
+      if (bestScore >= 0.85 && bestMatch != null) {
+        return BpsMediaUrls(
+          coverUrl: bestMatch!['cover_url'] as String?,
+          contentUrl: bestMatch!['content_url'] as String?,
+        );
+      }
+
+      // 2. Cari via parameter keyword WebAPI BPS
+      for (final model in models) {
+        for (final kw in keywords) {
+          final encodedKw = Uri.encodeComponent(kw);
+          final url =
+              '$_baseUrl/domain/$_domain/model/$model/lang/ind/keyword/$encodedKw/key/$_apiKey/';
+          try {
+            final resp = await httpClient
+                .get(Uri.parse(url), headers: bpsHeaders)
+                .timeout(const Duration(seconds: 7));
+            if (resp.statusCode == 200) {
+              final parsed = jsonDecode(resp.body);
+              if (parsed is Map<String, dynamic> &&
+                  parsed['data'] is List &&
+                  (parsed['data'] as List).length > 1 &&
+                  parsed['data'][1] is List) {
+                final items = (parsed['data'][1] as List)
+                    .map((e) => _normalizeLiveItem(Map<String, dynamic>.from(e), model))
+                    .toList();
+                evaluateCandidates(items);
+                if (bestScore >= 0.85) break;
+              }
+            }
+          } catch (_) {}
+        }
+        if (bestScore >= 0.85) break;
+      }
+
+      // 3. Fallback: cek halaman 1 live jika belum pernah dimuat
+      if (bestScore < 0.45) {
+        for (final model in models) {
+          if (!_liveListCache.containsKey('${model}_1')) {
+            try {
+              final page1 = await fetchLiveContentList(
+                model: model,
+                page: 1,
+                client: httpClient,
+              );
+              evaluateCandidates(page1);
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (bestMatch != null && bestScore >= 0.40) {
+        return BpsMediaUrls(
+          coverUrl: bestMatch!['cover_url'] as String?,
+          contentUrl: bestMatch!['content_url'] as String?,
+        );
+      }
+      return null;
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
+  static List<String> _candidateModelsForType(String? preferredType) {
+    final t = (preferredType ?? '').toLowerCase();
+    if (t == 'infografis' || t == 'infographic') return ['infographic'];
+    if (t == 'brs' || t == 'pressrelease') return ['pressrelease', 'infographic'];
+    if (t == 'publikasi' || t == 'publication') return ['publication'];
+    return ['infographic', 'pressrelease', 'publication'];
+  }
+
+  static List<String> _buildSearchKeywords(String title) {
+    const stopWords = {
+      'kota', 'malang', 'pada', 'bulan', 'tahun', 'yang', 'dan', 'di', 'ke',
+      'dari', 'untuk', 'sebesar', 'mencapai', 'mengalami', 'persen', 'poin',
+      'dibandingkan', 'sebelumnya', 'pad', 'tahun-on-tahun', 'year', 'on',
+      'januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli',
+      'agustus', 'september', 'oktober', 'november', 'desember',
+    };
+    final cleaned = title
+        .replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), ' ')
+        .toLowerCase();
+    final tokens = cleaned
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 3 && !stopWords.contains(w))
+        .toList();
+
+    final queries = <String>[];
+    if (tokens.length >= 3) {
+      queries.add(tokens.take(3).join(' '));
+    }
+    if (tokens.length >= 2) {
+      queries.add(tokens.take(2).join(' '));
+    }
+    if (tokens.isNotEmpty) {
+      queries.add(tokens.first);
+    }
+    if (queries.isEmpty && title.trim().isNotEmpty) {
+      queries.add(title.trim().split(RegExp(r'\s+')).take(2).join(' '));
+    }
+    return queries.toSet().toList();
+  }
+
+  static Set<String> _normalizeTokens(String text) {
+    return text
+        .replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), ' ')
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 2)
+        .toSet();
+  }
+
+  static double _scoreTitleMatch(String a, String b) {
+    final normA = a
+        .replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '')
+        .trim()
+        .toLowerCase();
+    final normB = b
+        .replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '')
+        .trim()
+        .toLowerCase();
+    if (normA.isEmpty || normB.isEmpty) return 0.0;
+    if (normA == normB) return 1.0;
+
+    final setA = _normalizeTokens(a);
+    final setB = _normalizeTokens(b);
+    if (setA.isEmpty || setB.isEmpty) return 0.0;
+
+    final intersection = setA.intersection(setB);
+    if (intersection.isEmpty) return 0.0;
+
+    final coverageA = intersection.length / setA.length;
+    final coverageB = intersection.length / setB.length;
+    double score = (coverageA + coverageB) / 2.0;
+
+    // Bonus/penalti jika ada angka tahun atau kode unik (misal 2026, ST2023)
+    final numTokensA = setA.where((w) => RegExp(r'\d').hasMatch(w)).toSet();
+    final numTokensB = setB.where((w) => RegExp(r'\d').hasMatch(w)).toSet();
+    if (numTokensA.isNotEmpty && numTokensB.isNotEmpty) {
+      final numOverlap = numTokensA.intersection(numTokensB).length;
+      if (numOverlap > 0) {
+        score += 0.15;
+      } else {
+        score -= 0.15;
+      }
+    }
+    return score.clamp(0.0, 1.0);
+  }
 }
 
 /// Model hasil parsing data BPS Web API
@@ -372,4 +678,12 @@ class BpsSeriesData {
   final List<double?> values;
 
   BpsSeriesData({required this.label, required this.values});
+}
+
+/// Pasangan URL cover dan konten segar hasil resolusi BPS Web API
+class BpsMediaUrls {
+  final String? coverUrl;
+  final String? contentUrl;
+
+  const BpsMediaUrls({this.coverUrl, this.contentUrl});
 }
