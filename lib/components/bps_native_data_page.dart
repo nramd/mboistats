@@ -140,7 +140,7 @@ class _BpsNativeDataPageState extends State<BpsNativeDataPage> {
                   _isLoading = true;
                   _errorMessage = null;
                 });
-                _fetchData();
+                _fetchData(forceRefresh: true);
               },
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Coba Lagi'),

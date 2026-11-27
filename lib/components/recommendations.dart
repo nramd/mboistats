@@ -102,6 +102,8 @@ class _RecommendationSectionState extends State<RecommendationSection> {
                             arguments: {
                               'pdfUrl': contentUrl,
                               'title': title,
+                              'contentType': inferredType,
+                              'contentId': item.contentId,
                             },
                           );
                         } else if (urlLower.contains('.jpg') ||

@@ -121,13 +121,14 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
         response = await _fetchImageResponse(_activeUrl);
       }
 
-      // Jika URL lama dari Supabase kedaluwarsa (misal HTTP 400), resolve ulang dari WebAPI BPS
+      // Jika URL lama dari Supabase atau cache sementara kedaluwarsa (HTTP 400), resolve ulang langsung dari WebAPI BPS
       if (response == null ||
           response.statusCode != 200 ||
           !_isValidImageBytes(response.bodyBytes)) {
         final fresh = await BpsApiService.resolveFreshMediaUrls(
           title: widget.title,
           preferredType: 'infografis',
+          forceRefresh: true,
           client: _httpClient,
         );
         final candidates = <String>[
@@ -137,7 +138,6 @@ class _GlobalImageViewerState extends State<GlobalImageViewer> {
             fresh.coverUrl!,
         ];
         for (final candidate in candidates) {
-          if (candidate == _activeUrl) continue;
           final retryResp = await _fetchImageResponse(candidate);
           if (retryResp.statusCode == 200 &&
               _isValidImageBytes(retryResp.bodyBytes)) {

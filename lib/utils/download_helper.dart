@@ -274,9 +274,10 @@ class DownloadHelper {
       final fresh = await BpsApiService.resolveFreshMediaUrls(
         title: fileName,
         preferredType: contentType,
+        forceRefresh: true,
       );
       final freshUrl = fresh?.contentUrl ?? fresh?.coverUrl;
-      if (freshUrl != null && freshUrl.isNotEmpty && freshUrl != url) {
+      if (freshUrl != null && freshUrl.isNotEmpty) {
         response = await sendReq(freshUrl);
       }
     }

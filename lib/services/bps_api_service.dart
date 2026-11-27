@@ -14,9 +14,18 @@ class BpsApiService {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   };
 
+  // Token `?f=` pada WebAPI BPS kedaluwarsa dalam ~1-2 jam; batasi cache in-memory 15 menit
+  static const Duration _cacheTtl = Duration(minutes: 15);
   static final Map<String, List<Map<String, dynamic>>> _liveListCache = {};
+  static final Map<String, DateTime> _liveListCacheTimes = {};
   static final Map<String, BpsMediaUrls> _resolvedMediaCache = {};
+  static final Map<String, DateTime> _resolvedMediaCacheTimes = {};
   static final Map<String, Future<BpsMediaUrls?>> _inFlightMediaLookups = {};
+
+  static bool _isCacheFresh(DateTime? timestamp) {
+    if (timestamp == null) return false;
+    return DateTime.now().difference(timestamp) < _cacheTtl;
+  }
 
   static Future<File> _getCacheFile(int varId) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -119,27 +128,11 @@ class BpsApiService {
     required int varId,
     required int maxYears,
   }) async {
-    final directUrl =
-        '$_baseUrl/model/data/domain/$_domain/var/$varId/th/1:/key/$_apiKey';
-    final response = await httpClient
-        .get(Uri.parse(directUrl))
-        .timeout(const Duration(seconds: 10));
-
-    if (response.statusCode != 200) {
-      throw Exception('HTTP Error: ${response.statusCode}');
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic> &&
-        decoded['status'] == 'OK' &&
-        decoded['var'] is List) {
-      return decoded;
-    }
-
-    // Fallback: ambil daftar th_id terbaru melalui endpoint model/th lalu unduh per 3 tahun
+    // BPS WebAPI membatasi parameter /th/ maksimal 3 tahun per panggilan (HTTP 400 jika /th/1:/)
+    // sehingga daftar th_id diambil lebih dulu lewat endpoint model/th lalu diunduh per chunk <= 3 tahun.
     final thUrl = '$_baseUrl/model/th/domain/$_domain/var/$varId/key/$_apiKey';
     final thResp = await httpClient
-        .get(Uri.parse(thUrl))
+        .get(Uri.parse(thUrl), headers: bpsHeaders)
         .timeout(const Duration(seconds: 10));
 
     if (thResp.statusCode != 200) {
@@ -157,6 +150,7 @@ class BpsApiService {
     final List<int> thIds = thItems
         .map((item) => int.tryParse(item['th_id'].toString()))
         .whereType<int>()
+        .toSet()
         .toList()
       ..sort();
 
@@ -168,22 +162,29 @@ class BpsApiService {
         ? thIds.sublist(thIds.length - maxYears)
         : thIds;
 
-    Map<String, dynamic>? mergedJson;
-    final List<Map<String, dynamic>> mergedTahun = [];
-    final Map<String, dynamic> mergedDataContent = {};
+    // Kelompokkan th_id agar selisih first..last tiap chunk selalu < 3 (maksimal 3 tahun)
+    final List<List<int>> chunks = [];
+    for (final id in selectedThIds) {
+      if (chunks.isEmpty || (id - chunks.last.first) >= 3) {
+        chunks.add([id]);
+      } else {
+        chunks.last.add(id);
+      }
+    }
 
-    for (int i = 0; i < selectedThIds.length; i += 3) {
-      final chunk = selectedThIds.sublist(
-        i,
-        (i + 3 < selectedThIds.length) ? i + 3 : selectedThIds.length,
-      );
+    Map<String, dynamic>? mergedJson;
+    final Map<String, Map<String, dynamic>> mergedTahunByVal = {};
+    final Map<String, dynamic> mergedDataContent = {};
+    int? lastErrorStatus;
+
+    for (final chunk in chunks) {
       final thParam =
           chunk.length == 1 ? '${chunk.first}' : '${chunk.first}:${chunk.last}';
       final chunkUrl =
           '$_baseUrl/model/data/domain/$_domain/var/$varId/th/$thParam/key/$_apiKey';
 
       final chunkResp = await httpClient
-          .get(Uri.parse(chunkUrl))
+          .get(Uri.parse(chunkUrl), headers: bpsHeaders)
           .timeout(const Duration(seconds: 10));
 
       if (chunkResp.statusCode == 200) {
@@ -193,7 +194,11 @@ class BpsApiService {
           if (chunkMap['tahun'] is List) {
             for (final t in chunkMap['tahun'] as List) {
               if (t is Map) {
-                mergedTahun.add(Map<String, dynamic>.from(t));
+                final tMap = Map<String, dynamic>.from(t);
+                final key = (tMap['val'] ?? tMap['label'] ?? '').toString();
+                if (key.isNotEmpty) {
+                  mergedTahunByVal[key] = tMap;
+                }
               }
             }
           }
@@ -203,12 +208,24 @@ class BpsApiService {
             );
           }
         }
+      } else {
+        lastErrorStatus = chunkResp.statusCode;
       }
     }
 
     if (mergedJson == null) {
+      if (lastErrorStatus != null) {
+        throw Exception('HTTP Error: $lastErrorStatus');
+      }
       throw Exception('Gagal mengunduh rentang tahun indikator BPS.');
     }
+
+    final mergedTahun = mergedTahunByVal.values.toList()
+      ..sort((a, b) {
+        final av = int.tryParse((a['val'] ?? '').toString()) ?? 0;
+        final bv = int.tryParse((b['val'] ?? '').toString()) ?? 0;
+        return av.compareTo(bv);
+      });
 
     mergedJson['tahun'] = mergedTahun;
     mergedJson['datacontent'] = mergedDataContent;
@@ -224,7 +241,9 @@ class BpsApiService {
     http.Client? client,
   }) async {
     final cacheKey = '${model}_$page';
-    if (!forceRefresh && _liveListCache.containsKey(cacheKey)) {
+    if (!forceRefresh &&
+        _liveListCache.containsKey(cacheKey) &&
+        _isCacheFresh(_liveListCacheTimes[cacheKey])) {
       return _liveListCache[cacheKey]!
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
@@ -254,8 +273,10 @@ class BpsApiService {
       final rawList = List<Map<String, dynamic>>.from(
         (parsed['data'][1] as List).map((e) => Map<String, dynamic>.from(e)),
       );
-      final normalized = rawList.map((item) => _normalizeLiveItem(item, model)).toList();
+      final normalized =
+          rawList.map((item) => _normalizeLiveItem(item, model)).toList();
       _liveListCache[cacheKey] = normalized;
+      _liveListCacheTimes[cacheKey] = DateTime.now();
       return normalized.map((e) => Map<String, dynamic>.from(e)).toList();
     } finally {
       if (shouldCloseClient) {
@@ -292,45 +313,58 @@ class BpsApiService {
   }
 
   /// Mencari ulang tautan media BPS yang segar (mengatasi token `?f=` kedaluwarsa / HTTP 400).
+  /// Jika [forceRefresh] = true, lewati cache in-memory agar langsung meminta token baru ke WebAPI BPS.
   static Future<BpsMediaUrls?> resolveFreshMediaUrls({
     required String title,
     String? preferredType,
+    bool forceRefresh = false,
     http.Client? client,
   }) async {
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty) return null;
 
     final cacheKey = '${preferredType ?? ''}|${cleanTitle.toLowerCase()}';
-    if (_resolvedMediaCache.containsKey(cacheKey)) {
+    if (!forceRefresh &&
+        _resolvedMediaCache.containsKey(cacheKey) &&
+        _isCacheFresh(_resolvedMediaCacheTimes[cacheKey])) {
       return _resolvedMediaCache[cacheKey];
     }
 
-    final existingLookup = _inFlightMediaLookups[cacheKey];
-    if (existingLookup != null) {
-      return await existingLookup;
+    if (!forceRefresh) {
+      final existingLookup = _inFlightMediaLookups[cacheKey];
+      if (existingLookup != null) {
+        return await existingLookup;
+      }
     }
 
     final future = _lookupFreshMediaUrls(
       title: cleanTitle,
       preferredType: preferredType,
+      forceRefresh: forceRefresh,
       client: client,
     );
-    _inFlightMediaLookups[cacheKey] = future;
+    if (!forceRefresh) {
+      _inFlightMediaLookups[cacheKey] = future;
+    }
 
     try {
       final result = await future;
       if (result != null) {
         _resolvedMediaCache[cacheKey] = result;
+        _resolvedMediaCacheTimes[cacheKey] = DateTime.now();
       }
       return result;
     } finally {
-      _inFlightMediaLookups.remove(cacheKey);
+      if (!forceRefresh) {
+        _inFlightMediaLookups.remove(cacheKey);
+      }
     }
   }
 
   static Future<BpsMediaUrls?> _lookupFreshMediaUrls({
     required String title,
     String? preferredType,
+    bool forceRefresh = false,
     http.Client? client,
   }) async {
     final models = _candidateModelsForType(preferredType);
@@ -353,18 +387,21 @@ class BpsApiService {
     }
 
     try {
-      // 1. Cek cache daftar live yang sudah pernah dimuat
-      for (final model in models) {
-        final cached = _liveListCache['${model}_1'];
-        if (cached != null) {
-          evaluateCandidates(cached);
+      // 1. Cek cache daftar live hanya jika tidak forceRefresh dan cache masih segar
+      if (!forceRefresh) {
+        for (final model in models) {
+          final cacheKey = '${model}_1';
+          final cached = _liveListCache[cacheKey];
+          if (cached != null && _isCacheFresh(_liveListCacheTimes[cacheKey])) {
+            evaluateCandidates(cached);
+          }
         }
-      }
-      if (bestScore >= 0.85 && bestMatch != null) {
-        return BpsMediaUrls(
-          coverUrl: bestMatch!['cover_url'] as String?,
-          contentUrl: bestMatch!['content_url'] as String?,
-        );
+        if (bestScore >= 0.85 && bestMatch != null) {
+          return BpsMediaUrls(
+            coverUrl: bestMatch!['cover_url'] as String?,
+            contentUrl: bestMatch!['content_url'] as String?,
+          );
+        }
       }
 
       // 2. Cari via parameter keyword WebAPI BPS
@@ -384,7 +421,8 @@ class BpsApiService {
                   (parsed['data'] as List).length > 1 &&
                   parsed['data'][1] is List) {
                 final items = (parsed['data'][1] as List)
-                    .map((e) => _normalizeLiveItem(Map<String, dynamic>.from(e), model))
+                    .map((e) =>
+                        _normalizeLiveItem(Map<String, dynamic>.from(e), model))
                     .toList();
                 evaluateCandidates(items);
                 if (bestScore >= 0.85) break;
@@ -395,19 +433,37 @@ class BpsApiService {
         if (bestScore >= 0.85) break;
       }
 
-      // 3. Fallback: cek halaman 1 live jika belum pernah dimuat
-      if (bestScore < 0.45) {
+      // 3. Fallback: ambil ulang halaman 1 live (atau halaman 2 jika belum cukup cocok)
+      if (bestScore < 0.85) {
         for (final model in models) {
-          if (!_liveListCache.containsKey('${model}_1')) {
+          if (forceRefresh ||
+              !_liveListCache.containsKey('${model}_1') ||
+              !_isCacheFresh(_liveListCacheTimes['${model}_1'])) {
             try {
               final page1 = await fetchLiveContentList(
                 model: model,
                 page: 1,
+                forceRefresh: forceRefresh,
                 client: httpClient,
               );
               evaluateCandidates(page1);
             } catch (_) {}
           }
+        }
+      }
+
+      if (bestScore < 0.45) {
+        for (final model in models) {
+          try {
+            final page2 = await fetchLiveContentList(
+              model: model,
+              page: 2,
+              forceRefresh: forceRefresh,
+              client: httpClient,
+            );
+            evaluateCandidates(page2);
+            if (bestScore >= 0.85) break;
+          } catch (_) {}
         }
       }
 
@@ -428,18 +484,49 @@ class BpsApiService {
   static List<String> _candidateModelsForType(String? preferredType) {
     final t = (preferredType ?? '').toLowerCase();
     if (t == 'infografis' || t == 'infographic') return ['infographic'];
-    if (t == 'brs' || t == 'pressrelease') return ['pressrelease', 'infographic'];
+    if (t == 'brs' || t == 'pressrelease') {
+      return ['pressrelease', 'infographic'];
+    }
     if (t == 'publikasi' || t == 'publication') return ['publication'];
     return ['infographic', 'pressrelease', 'publication'];
   }
 
   static List<String> _buildSearchKeywords(String title) {
     const stopWords = {
-      'kota', 'malang', 'pada', 'bulan', 'tahun', 'yang', 'dan', 'di', 'ke',
-      'dari', 'untuk', 'sebesar', 'mencapai', 'mengalami', 'persen', 'poin',
-      'dibandingkan', 'sebelumnya', 'pad', 'tahun-on-tahun', 'year', 'on',
-      'januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli',
-      'agustus', 'september', 'oktober', 'november', 'desember',
+      'kota',
+      'malang',
+      'pada',
+      'bulan',
+      'tahun',
+      'yang',
+      'dan',
+      'di',
+      'ke',
+      'dari',
+      'untuk',
+      'sebesar',
+      'mencapai',
+      'mengalami',
+      'persen',
+      'poin',
+      'dibandingkan',
+      'sebelumnya',
+      'pad',
+      'tahun-on-tahun',
+      'year',
+      'on',
+      'januari',
+      'februari',
+      'maret',
+      'april',
+      'mei',
+      'juni',
+      'juli',
+      'agustus',
+      'september',
+      'oktober',
+      'november',
+      'desember',
     };
     final cleaned = title
         .replaceAll(RegExp(r'\(\d+\)\d{4}-\d{2}-\d{2}$'), '')

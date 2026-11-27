@@ -85,7 +85,7 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
       headers: const {
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/pdf,*/*',
+        'Accept': '*/*',
       },
     ).timeout(const Duration(seconds: 25));
   }
@@ -120,19 +120,18 @@ class _GlobalPDFViewerState extends State<GlobalPDFViewer> {
         response = await _fetchPdfResponse(_activeUrl);
       }
 
-      // Jika URL lama dari Supabase kedaluwarsa (HTTP 400), resolve ulang dari WebAPI BPS
+      // Jika URL lama dari Supabase atau cache sementara kedaluwarsa (HTTP 400), resolve ulang langsung dari WebAPI BPS
       if (response == null ||
           response.statusCode != 200 ||
           !_isValidPdfBytes(response.bodyBytes)) {
         final fresh = await BpsApiService.resolveFreshMediaUrls(
           title: widget.title,
           preferredType: widget.contentType,
+          forceRefresh: true,
           client: _httpClient,
         );
         final freshPdfUrl = fresh?.contentUrl;
-        if (freshPdfUrl != null &&
-            freshPdfUrl.isNotEmpty &&
-            freshPdfUrl != _activeUrl) {
+        if (freshPdfUrl != null && freshPdfUrl.isNotEmpty) {
           final retryResp = await _fetchPdfResponse(freshPdfUrl);
           if (retryResp.statusCode == 200 &&
               _isValidPdfBytes(retryResp.bodyBytes)) {

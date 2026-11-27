@@ -67,6 +67,7 @@ class _BpsCoverImageState extends State<BpsCoverImage> {
     final resolved = await BpsApiService.resolveFreshMediaUrls(
       title: widget.title,
       preferredType: widget.contentType,
+      forceRefresh: _effectiveUrl.isNotEmpty,
     );
     final freshUrl = resolved?.coverUrl ?? resolved?.contentUrl ?? '';
     if (!mounted) return;
